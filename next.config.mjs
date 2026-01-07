@@ -14,13 +14,9 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // 1. Force TypeScript to be ignored during build
+  // Only keep typescript ignore. ESLint ignore is handled by .eslintrc.json now.
   typescript: {
     ignoreBuildErrors: true,
-  },
-  // 2. Force ESLint to be ignored during build
-  eslint: {
-    ignoreDuringBuilds: true,
   }
 };
 

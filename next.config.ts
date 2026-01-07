@@ -1,5 +1,4 @@
 import withPWAInit from "@ducanh2912/next-pwa";
-import type { NextConfig } from "next";
 
 const withPWA = withPWAInit({
   dest: "public",
@@ -12,22 +11,17 @@ const withPWA = withPWAInit({
   },
 });
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   reactStrictMode: true,
-  // Force Webpack to be used instead of Turbopack for builds
-  experimental: {
-    turbo: {
-      // Intentionally empty to signal we are aware of turbo but relying on default behavior
-    }
-  },
-  // Skip type checking and linting during build to prevent deployment failures
-  // This is recommended for demos/MVPs to ensure the visual product goes live
+  // 1. Force TypeScript to be ignored during build
   typescript: {
     ignoreBuildErrors: true,
   },
+  // 2. Force ESLint to be ignored during build
   eslint: {
     ignoreDuringBuilds: true,
-  },
+  }
 };
 
 export default withPWA(nextConfig);

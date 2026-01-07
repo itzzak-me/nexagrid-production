@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/context/ToastContext";
 import { ConfigProvider } from "@/context/ConfigContext";
+import SplashScreen from "@/components/SplashScreen"; // <--- NEW IMPORT
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
@@ -38,6 +39,7 @@ export default function RootLayout({
       <body className={`${inter.variable} ${mono.variable} font-sans bg-[#050505] text-white antialiased selection:bg-indigo-500 selection:text-white overscroll-none`}>
         <ConfigProvider>
           <ToastProvider>
+            <SplashScreen /> {/* <--- ADDED HERE: Runs first on load */}
             {children}
           </ToastProvider>
         </ConfigProvider>

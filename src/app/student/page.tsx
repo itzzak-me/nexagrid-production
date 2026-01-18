@@ -11,7 +11,7 @@ import {
     Wallet, Calendar as CalendarIcon, CalendarPlus, CreditCard,
     Download, ArrowRight, LogOut, FileText, Users, MessageCircle,
     ThumbsUp, HelpCircle, AlertTriangle, Zap, Lock, Clock, GraduationCap,
-    Image as ImageIcon, XCircle
+    Image as ImageIcon, XCircle, Plus
 } from "lucide-react";
 import {
     Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer
@@ -23,6 +23,7 @@ import {
 // --- TYPES ---
 type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string };
 type SubjectChats = Record<string, ChatSession[]>;
+type Doubt = { id: number; student: string; class: string; query: string; status: string; votes: number; responses: number; time: string; };
 
 declare global {
     interface Window {
@@ -30,12 +31,10 @@ declare global {
     }
 }
 
-// --- SCROLL LOCK HOOK (Only for Modals) ---
+// --- SCROLL LOCK HOOK ---
 const useScrollLock = () => {
     useEffect(() => {
-        // Lock body scroll
         document.body.style.overflow = "hidden";
-        // Unlock on unmount
         return () => { document.body.style.overflow = "auto"; };
     }, []);
 };
@@ -117,15 +116,21 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     );
 };
 
-// --- COMPONENT: PEER FORUM ---
-const PeerForum = ({ onClose }: { onClose: () => void }) => {
-    useScrollLock(); // Lock scrolling when modal is open
-    const { addToast } = useToast();
-    const [doubts, setDoubts] = useState(PEER_DOUBTS);
+// --- COMPONENT: PEER FORUM (UPDATED: Input Added) ---
+const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, doubts: Doubt[], onVote: (id: number) => void, onPost: (q: string) => void }) => {
+    useScrollLock();
+    const [newQuestion, setNewQuestion] = useState("");
+    const [isPosting, setIsPosting] = useState(false);
 
-    const handleVote = (id: number) => {
-        setDoubts(prev => prev.map(d => d.id === id ? { ...d, votes: d.votes + 1 } : d));
-        if (navigator.vibrate) navigator.vibrate(10);
+    const handlePost = () => {
+        if (!newQuestion.trim()) return;
+        setIsPosting(true);
+        // Simulate network delay for effect
+        setTimeout(() => {
+            onPost(newQuestion);
+            setNewQuestion("");
+            setIsPosting(false);
+        }, 800);
     };
 
     return (
@@ -138,15 +143,28 @@ const PeerForum = ({ onClose }: { onClose: () => void }) => {
 
             <div className="flex-1 overflow-y-auto h-full w-full no-scrollbar">
                 <div className="p-6 max-w-2xl mx-auto w-full pb-20 space-y-6">
-                    <div className="relative p-8 rounded-[2.5rem] bg-gradient-to-br from-amber-500/10 to-orange-600/5 border border-amber-500/20 overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/20 blur-[50px] rounded-full pointer-events-none" />
-                        <div className="relative z-10 flex flex-col items-center text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-amber-500 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(245,158,11,0.4)]"><Users className="text-black" size={28} /></div>
-                            <h3 className="text-2xl font-black text-white tracking-tight">Community Intelligence</h3>
-                            <p className="text-xs text-neutral-400 mt-2 max-w-sm">Boost unsolved queries to escalate them to the Faculty Command Node.</p>
+
+                    {/* INPUT SECTION */}
+                    <div className="p-6 rounded-[2rem] bg-white/[0.02] border border-white/10 shadow-xl">
+                        <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><HelpCircle size={16} className="text-amber-500" /> Ask the Hive Mind</h3>
+                        <div className="relative">
+                            <textarea
+                                value={newQuestion}
+                                onChange={(e) => setNewQuestion(e.target.value)}
+                                placeholder="Type your question here... (e.g., 'Does anyone have notes for Thermodynamics?')"
+                                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl p-4 pr-12 text-sm focus:border-amber-500 outline-none transition-all placeholder:text-neutral-600 resize-none min-h-[100px]"
+                            />
+                            <button
+                                onClick={handlePost}
+                                disabled={isPosting || !newQuestion.trim()}
+                                className="absolute bottom-3 right-3 p-2 bg-amber-500 text-black rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                            </button>
                         </div>
                     </div>
 
+                    {/* DOUBTS LIST */}
                     {doubts.map((doubt) => (
                         <div key={doubt.id} className="p-6 rounded-[2rem] bg-[#0A0A0A] border border-white/[0.05] hover:border-amber-500/30 transition-all duration-300 group shadow-lg">
                             <div className="flex justify-between items-start mb-4">
@@ -165,11 +183,11 @@ const PeerForum = ({ onClose }: { onClose: () => void }) => {
                             <div className="pl-[52px]">
                                 <p className="text-sm text-neutral-300 leading-relaxed mb-6 font-medium">"{doubt.query}"</p>
                                 <div className="flex items-center justify-between border-t border-white/5 pt-5">
-                                    <button onClick={() => handleVote(doubt.id)} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all group/btn active:scale-95">
+                                    <button onClick={() => onVote(doubt.id)} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all group/btn active:scale-95">
                                         <Zap size={16} className="text-neutral-500 group-hover/btn:text-emerald-500 group-hover/btn:fill-emerald-500 transition-colors duration-300" />
                                         <span className="text-xs font-bold text-neutral-400 group-hover/btn:text-white">{doubt.votes} <span className="hidden sm:inline">System Boosts</span></span>
                                     </button>
-                                    <button onClick={() => addToast("Opening Neural Editor...", "info")} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-500/20 transition-colors">
+                                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-500/20 transition-colors">
                                         <MessageCircle size={16} /> <span>{doubt.responses} Solutions</span>
                                     </button>
                                 </div>
@@ -182,9 +200,9 @@ const PeerForum = ({ onClose }: { onClose: () => void }) => {
     );
 };
 
-// --- COMPONENT: NEXA AI CHAT (UPDATED) ---
+// --- COMPONENT: NEXA AI CHAT ---
 const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: string) => void }) => {
-    useScrollLock(); // Lock scrolling when modal is open
+    useScrollLock();
     const { addToast } = useToast();
     const [activeSubject, setActiveSubject] = useState<string | null>(null);
     const [input, setInput] = useState("");
@@ -234,24 +252,14 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
 
         try {
             if (typeof window !== 'undefined' && window.puter) {
-                // --- PROMPT ENGINEERING FOR STUDENTS ---
                 const systemPrompt = `
-                ROLE: You are Nexa, a friendly and highly intelligent AI Tutor for a student in Class 10/11/12 (JEE/NEET Prep).
-                SUBJECT: The user is asking about ${activeSubject}.
-                
-                INSTRUCTIONS:
-                1. DO NOT give the answer immediately if it's a problem. Guide the student step-by-step.
-                2. Use ANALOGIES for complex concepts (e.g., compare Voltage to Water Pressure).
-                3. If an IMAGE is provided:
-                   - First, transcribe the text/equation in the image.
-                   - Identify the specific topic (e.g., "This is Rotational Dynamics").
-                   - Solve it methodically.
-                4. Keep the tone encouraging ("You're doing great!", "Let's break this down").
-                5. Use Markdown for bolding key terms.
+                ROLE: You are Nexa, a friendly AI Tutor for Class 10/11/12.
+                SUBJECT: ${activeSubject}.
+                INSTRUCTIONS: Use Analogies. If Image: Transcribe then Solve. Format clearly.
                 `;
 
-                const visionContext = userImg ? `\n\n[IMAGE ANALYSIS REQUIRED]: The user uploaded an image. Analyze it closely.` : "";
-                const fullPrompt = `${systemPrompt}${visionContext}\n\nStudent Question: ${userMsg}`;
+                const visionContext = userImg ? `\n\n[IMAGE DETECTED]: Analyze the image content carefully.` : "";
+                const fullPrompt = `${systemPrompt}${visionContext}\n\nStudent: ${userMsg}`;
 
                 let response;
                 if (userImg) {
@@ -270,13 +278,13 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
             } else {
                 setHistory(prev => ({
                     ...prev,
-                    [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: "Error: AI Core Offline (Puter.js missing)." } : c)
+                    [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: "AI Core Offline." } : c)
                 }));
             }
         } catch (error) {
             setHistory(prev => ({
                 ...prev,
-                [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: "Connection Interrupted. Please try again." } : c)
+                [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: "Connection Error." } : c)
             }));
         } finally {
             setIsTyping(false);
@@ -361,7 +369,7 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
 
 // --- LEAVE REQUEST MODAL ---
 const LeaveRequestModal = ({ onClose }: { onClose: () => void }) => {
-    useScrollLock(); // Lock scrolling when modal is open
+    useScrollLock();
     const { addToast } = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setIsLoading(true); setTimeout(() => { addToast("Request Sent", "success"); onClose(); }, 1200); };
@@ -377,7 +385,7 @@ const LeaveRequestModal = ({ onClose }: { onClose: () => void }) => {
 
 // --- COMPONENT: PROFILE & FEES MERGED ---
 const StudentProfile = ({ onClose }: { onClose: () => void }) => {
-    useScrollLock(); // Lock scrolling when modal is open
+    useScrollLock();
     const student = MOCK_STUDENTS[0];
     const { themeColor } = useConfig();
     const activeColor = `rgb(${themeColor})`;
@@ -465,6 +473,9 @@ const DashboardContent = () => {
     const currentView = searchParams.get('view');
     const { addToast } = useToast();
 
+    // STATE: Lifted Doubts State
+    const [peerDoubts, setPeerDoubts] = useState(PEER_DOUBTS);
+
     // SCROLL FIX: Force body to be scrollable when main dashboard is active
     useEffect(() => {
         document.body.style.overflow = "auto";
@@ -474,9 +485,40 @@ const DashboardContent = () => {
         router.push(pathname + '?view=' + view);
     };
 
+    // ESCALATION HANDLER (Adds to Hive Mind)
     const handleEscalation = (query: string) => {
+        const newDoubt = {
+            id: Date.now(),
+            student: "Rohan (You)", // Current user
+            class: "10th",
+            query: query,
+            status: "peer_review",
+            votes: 0,
+            responses: 0,
+            time: "Just Now"
+        };
+        setPeerDoubts(prev => [newDoubt, ...prev]);
         addToast("Doubt Escalated to Hive Mind", "success");
         router.push(pathname + '?view=peer_forum');
+    };
+
+    const handlePostDoubt = (query: string) => {
+        const newDoubt = {
+            id: Date.now(),
+            student: "Rohan (You)",
+            class: "10th",
+            query: query,
+            status: "peer_review",
+            votes: 0,
+            responses: 0,
+            time: "Just Now"
+        };
+        setPeerDoubts(prev => [newDoubt, ...prev]);
+        addToast("Question Posted to Hive Mind", "success");
+    };
+
+    const handleVote = (id: number) => {
+        setPeerDoubts(prev => prev.map(d => d.id === id ? { ...d, votes: d.votes + 1 } : d));
     };
 
     return (
@@ -514,7 +556,7 @@ const DashboardContent = () => {
                         <div className="absolute bottom-0 right-0 p-10 opacity-[0.03] group-hover:opacity-10 transition-opacity duration-500"><Users size={180} className="text-amber-500" /></div>
                         <div className="relative z-10 h-full flex flex-col justify-between">
                             <div><div className="p-4 bg-amber-500/10 w-fit rounded-2xl mb-8 text-amber-500 ring-1 ring-amber-500/20"><Users size={28} /></div><h2 className="text-3xl font-bold mb-3 tracking-tight">Hive Mind</h2><p className="text-sm text-neutral-500 leading-relaxed">Community Grid & Peer Resolution.</p></div>
-                            <div><p className="text-[9px] uppercase font-bold text-neutral-600 mb-2 tracking-widest">Status</p><div className="flex items-center gap-2 text-amber-400 font-bold text-sm"><div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" /> Active</div></div>
+                            <div><p className="text-[9px] uppercase font-bold text-neutral-600 mb-2 tracking-widest">Status</p><div className="flex items-center gap-2 text-amber-400 font-bold text-sm"><div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" /> {peerDoubts.length} Active Threads</div></div>
                         </div>
                     </button>
 
@@ -548,7 +590,7 @@ const DashboardContent = () => {
                 {currentView === 'profile' && <StudentProfile onClose={() => router.back()} />}
                 {currentView === 'leave' && <LeaveRequestModal onClose={() => router.back()} />}
                 {/* Removed FinancialDashboard from root because it's now inside Profile */}
-                {currentView === 'peer_forum' && <PeerForum onClose={() => router.back()} />}
+                {currentView === 'peer_forum' && <PeerForum onClose={() => router.back()} doubts={peerDoubts} onVote={handleVote} onPost={handlePostDoubt} />}
             </AnimatePresence>
         </div>
     );

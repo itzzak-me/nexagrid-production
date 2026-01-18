@@ -8,9 +8,29 @@ export default function SplashScreen() {
     const [isVisible, setIsVisible] = useState(true);
 
     useEffect(() => {
-        // Hide splash screen after 2.5 seconds
-        const timer = setTimeout(() => setIsVisible(false), 2500);
-        return () => clearTimeout(timer);
+        // 1. Force Lock immediately
+        document.body.style.overflow = "hidden";
+
+        // 2. Ensure it STAYS hidden even if React re-renders in Dev mode
+        const lockScroll = () => {
+            document.body.style.overflow = "hidden";
+        };
+        window.addEventListener('scroll', lockScroll);
+
+        const timer = setTimeout(() => {
+            setIsVisible(false);
+
+            // 3. ONLY Unlock after the animation is actually done
+            document.body.style.overflow = "auto";
+            document.body.style.overflowX = "hidden"; // Keep X hidden
+            window.removeEventListener('scroll', lockScroll);
+        }, 2500);
+
+        return () => {
+            clearTimeout(timer);
+            // DO NOT UNLOCK HERE in Dev Mode context
+            // We rely on the natural lifecycle or the specific timeout completion
+        };
     }, []);
 
     return (
@@ -20,7 +40,8 @@ export default function SplashScreen() {
                     initial={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.5 }}
-                    className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center"
+                    className="fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center overscroll-none touch-none" // touch-none prevents mobile scrolling
+                    onTouchMove={(e) => e.preventDefault()} // Hard block for mobile touch
                 >
                     <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}

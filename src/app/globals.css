@@ -1,23 +1,62 @@
 @import "tailwindcss";
-/* <--- The v4 standard */
 
 @theme {
-  /* Define your custom colors here to map to Tailwind variables */
   --color-brand: #10B981;
   --color-background: #050505;
   --color-card: #0A0A0A;
   --color-primary: #FFFFFF;
 }
 
-/* Legacy Variable Support for our Theme Engine */
 :root {
-  --primary-rgb: 16 185 129;
   --bg-main: #050505;
-  --bg-card: #0A0A0A;
   --text-main: #FFFFFF;
+}
+
+html {
+  /* Allow scrolling but prevent bounce on Mac/iOS */
+  overscroll-behavior-y: none;
+  scroll-behavior: smooth;
 }
 
 body {
   background-color: var(--bg-main);
   color: var(--text-main);
+  font-family: Arial, Helvetica, sans-serif;
+
+  /* CRITICAL: Do NOT set height: 100% or overflow: hidden here globally */
+  min-height: 100vh;
+  width: 100%;
+
+  /* Enable Y-Scroll, Disable X-Scroll */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* --- HIDE SCROLLBAR UI (Cross-Browser) --- */
+/* Chrome, Safari, Opera */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Firefox */
+html,
+body {
+  scrollbar-width: none;
+}
+
+/* IE, Edge */
+html,
+body {
+  -ms-overflow-style: none;
+}
+
+/* Helper for Modals */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

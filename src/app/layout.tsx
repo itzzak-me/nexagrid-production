@@ -3,21 +3,20 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/context/ToastContext";
 import { ConfigProvider } from "@/context/ConfigContext";
-import SplashScreen from "@/components/SplashScreen"; // <--- NEW IMPORT
+import SplashScreen from "@/components/SplashScreen";
+import Script from "next/script"; // <--- IMPORT THIS
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
-// 1. PWA Viewport Settings (Prevents zooming, sets color)
 export const viewport: Viewport = {
   themeColor: "#050505",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Prevents pinch-zoom like a native app
+  userScalable: false,
 };
 
-// 2. PWA Metadata
 export const metadata: Metadata = {
   title: "NexGen OS",
   description: "Advanced Academic Management System",
@@ -37,9 +36,16 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} ${mono.variable} font-sans bg-[#050505] text-white antialiased selection:bg-indigo-500 selection:text-white overscroll-none`}>
+
+        {/* --- CRITICAL: AI ENGINE SCRIPT --- */}
+        <Script
+          src="https://js.puter.com/v2/"
+          strategy="beforeInteractive"
+        />
+
         <ConfigProvider>
           <ToastProvider>
-            <SplashScreen /> {/* <--- ADDED HERE: Runs first on load */}
+            <SplashScreen />
             {children}
           </ToastProvider>
         </ConfigProvider>

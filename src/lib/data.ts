@@ -110,10 +110,9 @@ export const EXAM_DATA: Record<string, { subject: string; A: number; fullMark: n
     ]
 };
 
+// CLEANED AI KNOWLEDGE BASE (No pre-filled questions)
 export const AI_KNOWLEDGE_BASE = {
-    "Physics": [
-        { id: "1", query: "Sir, what is the trick to solve pulley problems?", response: "For pulley problems, always draw the Free Body Diagram (FBD) first. Assume acceleration direction, write T-mg=ma equations for each block.", date: "Yesterday", role: "ai" }
-    ],
+    "Physics": [],
     "Mathematics": [],
     "Chemistry": []
 };

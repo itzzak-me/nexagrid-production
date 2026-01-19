@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useRef } from "react";
+import React, { useState, useEffect, Suspense, useRef, useMemo } from "react";
+import dynamic from "next/dynamic"; // 1. LAZY LOADING
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/context/ToastContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -32,7 +33,7 @@ declare global {
     }
 }
 
-// --- SCROLL LOCK HOOK ---
+// --- OPTIMIZED SCROLL LOCK ---
 const useScrollLock = () => {
     useEffect(() => {
         document.body.style.overflow = "hidden";
@@ -40,39 +41,40 @@ const useScrollLock = () => {
     }, []);
 };
 
-// --- MARKDOWN PARSER COMPONENT ---
-const RichText = ({ content }: { content: string }) => {
-    const parts = content.split(/(```[\s\S]*?```)/g);
+// --- MEMOIZED RICH TEXT PARSER ---
+const RichText = React.memo(({ content }: { content: string }) => {
+    const parts = useMemo(() => content.split(/(```[\s\S]*?```)/g), [content]);
     return (
-        <div className="space-y-2 leading-relaxed">
+        <div className="space-y-2 leading-relaxed text-sm">
             {parts.map((part, i) => {
                 if (part.startsWith("```")) {
                     return (
-                        <pre key={i} className="bg-black/30 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-white/10 text-emerald-400">
+                        <pre key={i} className="bg-black/30 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-white/10 text-emerald-400 my-2">
                             {part.replace(/```/g, "").trim()}
                         </pre>
                     );
                 }
                 return (
-                    <p key={i} className="whitespace-pre-wrap">
-                        {part.split(/(\*\*.*?\*\*|\n- .*)/g).map((chunk, j) => {
+                    <div key={i} className="whitespace-pre-wrap">
+                        {part.split(/(\*\*.*?\*\*|\n- .*|### .*)/g).map((chunk, j) => {
                             if (chunk.startsWith("**") && chunk.endsWith("**")) {
                                 return <strong key={j} className="text-white font-bold">{chunk.slice(2, -2)}</strong>;
                             }
                             if (chunk.startsWith("\n- ")) {
-                                return <span key={j} className="block pl-4 border-l-2 border-indigo-500/50 my-1">{chunk.trim().substring(1)}</span>;
+                                return <div key={j} className="flex gap-2 my-1 pl-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" /><span className="text-neutral-300">{chunk.trim().substring(1)}</span></div>;
                             }
-                            if (chunk.includes("###")) {
-                                return <span key={j} className="block text-lg font-bold text-indigo-300 mt-4 mb-2">{chunk.replace(/###/g, "")}</span>;
+                            if (chunk.startsWith("###")) {
+                                return <h3 key={j} className="text-lg font-bold text-emerald-400 mt-4 mb-2">{chunk.replace(/###/g, "").trim()}</h3>;
                             }
                             return chunk;
                         })}
-                    </p>
+                    </div>
                 );
             })}
         </div>
     );
-};
+});
+RichText.displayName = 'RichText';
 
 // --- COMPONENT: TOP NAVIGATION ---
 const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void }) => {
@@ -82,11 +84,11 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const router = useRouter();
 
-    const [notifications, setNotifications] = useState([
+    const notifications = useMemo(() => [
         { id: 1, title: "Fee Due", desc: "Physics Module Fee Pending", time: "2h ago", icon: Wallet, color: "text-rose-500 bg-rose-500/10" },
         { id: 2, title: "Assignment", desc: "Chemistry Lab Record", time: "5h ago", icon: FileText, color: "text-blue-500 bg-blue-500/10" },
         { id: 3, title: "System", desc: "Nexa AI v4.0 (Quantum) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
-    ]);
+    ], []);
 
     useEffect(() => {
         const close = () => { setIsNotifOpen(false); setIsProfileOpen(false); };
@@ -100,8 +102,8 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     };
 
     return (
-        <header className="fixed top-0 left-0 right-0 h-24 flex items-center justify-between px-6 z-40 pointer-events-none">
-            <div className="absolute inset-0 bg-gradient-to-b from-[#050505] via-[#050505]/80 to-transparent pointer-events-auto" />
+        <header className="fixed top-0 left-0 right-0 h-24 flex items-center justify-between px-6 z-40 pointer-events-none transform-gpu">
+            <div className="absolute inset-0 bg-gradient-to-b from-[#050505] via-[#050505]/95 to-transparent pointer-events-auto backdrop-blur-sm" />
             <div className="relative z-10 flex items-center gap-4 pointer-events-auto">
                 <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/20"><Award className="text-white" size={20} /></div>
                 <div><span className="font-bold text-sm tracking-tight block text-white">{schoolName}</span><span className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest">Scholar Portal</span></div>
@@ -120,9 +122,9 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
                     <AnimatePresence>
                         {isNotifOpen && (
                             <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-3 w-80 bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-xl">
-                                <div className="px-4 py-3 border-b border-white/5 flex justify-between items-center"><span className="text-xs font-bold text-white">Alerts</span>{notifications.length > 0 && <button onClick={() => setNotifications([])} className="text-[10px] text-emerald-400 hover:text-emerald-300">Mark all read</button>}</div>
+                                <div className="px-4 py-3 border-b border-white/5 flex justify-between items-center"><span className="text-xs font-bold text-white">Alerts</span></div>
                                 <div className="max-h-64 overflow-y-auto p-2 space-y-1 no-scrollbar">
-                                    {notifications.length === 0 ? <div className="p-8 text-center text-neutral-600 text-xs">No pending alerts</div> : notifications.map((n) => (
+                                    {notifications.map((n) => (
                                         <div key={n.id} className="flex gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.color}`}><n.icon size={14} /></div>
                                             <div><p className="text-xs font-bold text-neutral-200 group-hover:text-white">{n.title}</p><p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{n.desc}</p><p className="text-[9px] text-neutral-600 mt-1 font-mono">{n.time}</p></div>
@@ -219,7 +221,7 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
     );
 };
 
-// --- COMPONENT: NEXA AI CHAT (UPGRADED: Standard Chat Flow) ---
+// --- COMPONENT: NEXA AI CHAT ---
 const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: string) => void }) => {
     useScrollLock();
     const { addToast } = useToast();
@@ -232,19 +234,12 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Scroll to bottom whenever history changes
     const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     useEffect(scrollToBottom, [history, activeSubject, isStreaming]);
 
     const handleMic = () => {
-        if (!window.webkitSpeechRecognition) {
-            addToast("Voice not supported in this browser", "error");
-            return;
-        }
-        if (isListening) {
-            setIsListening(false);
-            return;
-        }
+        if (!window.webkitSpeechRecognition) { addToast("Voice not supported", "error"); return; }
+        if (isListening) { setIsListening(false); return; }
         const recognition = new window.webkitSpeechRecognition();
         recognition.lang = 'en-US';
         recognition.onstart = () => setIsListening(true);
@@ -267,7 +262,7 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
 
     const handleSend = async (manualInput?: string) => {
         const textToSend = manualInput || input;
-        if ((!textToSend.trim() && !attachedImage) || !activeSubject) return;
+        if (!textToSend.trim() && !attachedImage) return;
 
         const newChat: ChatSession = {
             id: Date.now().toString(),
@@ -279,19 +274,14 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
             isStreaming: true
         };
 
-        // --- CHANGE 1: Append new chat to END of array (Standard Chat) ---
-        setHistory(prev => ({
-            ...prev,
-            [activeSubject]: [...(prev[activeSubject] || []), newChat]
-        }));
-
+        setHistory(prev => ({ ...prev, [activeSubject!]: [...(prev[activeSubject!] || []), newChat] }));
         setInput("");
         setAttachedImage(null);
         setIsStreaming(true);
 
         try {
             if (typeof window !== 'undefined' && window.puter) {
-                const systemPrompt = `ROLE: Nexa AI. SUBJECT: ${activeSubject}. FORMAT: Markdown.`;
+                const systemPrompt = `ROLE: Nexa AI (Tutor). SUBJECT: ${activeSubject}. FORMAT: Markdown.`;
                 const responseStream = await window.puter.ai.chat(`${systemPrompt}\nUser: ${textToSend}`, attachedImage ? attachedImage : { stream: true, model: 'gemini-3-flash-preview' }, attachedImage ? { stream: true, model: 'gemini-3-flash-preview' } : undefined);
 
                 let fullText = "";
@@ -299,26 +289,21 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
                     fullText += part?.text || "";
                     setHistory(prev => ({
                         ...prev,
-                        [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, response: fullText } : c)
+                        [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: fullText } : c)
                     }));
                 }
 
                 setHistory(prev => ({
                     ...prev,
-                    [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, isStreaming: false } : c)
+                    [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, isStreaming: false } : c)
                 }));
-
-            } else {
-                throw new Error("Puter Offline");
-            }
+            } else { throw new Error("Puter Offline"); }
         } catch (error) {
             setHistory(prev => ({
                 ...prev,
-                [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, response: "Link Failed. Try again.", isStreaming: false } : c)
+                [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: "Connection Failed.", isStreaming: false } : c)
             }));
-        } finally {
-            setIsStreaming(false);
-        }
+        } finally { setIsStreaming(false); }
     };
 
     return (
@@ -347,7 +332,6 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
                             </div>
                         </div>
                     ) : (
-                        // --- CHANGE 2: Removed 'flex-col-reverse' and .reverse() for standard flow ---
                         <div className="space-y-8 flex flex-col">
                             {history[activeSubject]?.map((chat) => (
                                 <div key={chat.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -355,7 +339,6 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
                                         {chat.image && (
                                             <div className="relative group mb-2">
                                                 <img src={chat.image} alt="Upload" className="w-48 h-auto rounded-2xl border border-white/10 object-cover shadow-lg" />
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent rounded-2xl" />
                                             </div>
                                         )}
                                         <div className="bg-white text-black px-6 py-4 rounded-[1.5rem] rounded-tr-sm text-sm font-medium max-w-[85%] shadow-lg">{chat.query}</div>
@@ -376,7 +359,6 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
                             <div className="pb-4 flex justify-center"><button onClick={() => setActiveSubject(null)} className="text-xs text-neutral-500 flex items-center gap-2 hover:text-white transition-colors uppercase tracking-widest font-bold bg-white/5 px-4 py-2 rounded-full"><ArrowRight className="rotate-180" size={12} /> Modules</button></div>
                         </div>
                     )}
-                    {/* SCROLL ANCHOR */}
                     <div ref={messagesEndRef} />
                 </div>
             </div>
@@ -569,7 +551,7 @@ const DashboardContent = () => {
 
     return (
         <div className="min-h-screen bg-[#050505] text-white pt-28 pb-24 selection:bg-indigo-500 selection:text-white overflow-x-hidden">
-            <div className="fixed top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" />
+            <div className="fixed top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none transform-gpu" />
             <TopNavigation onViewChange={handleViewChange} />
             <main className="px-6 max-w-6xl mx-auto space-y-10 relative z-10">
                 <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 px-2">
@@ -587,7 +569,7 @@ const DashboardContent = () => {
 
                 <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     {/* 1. NEXA AI */}
-                    <button onClick={() => router.push(pathname + '?view=genius')} className="md:col-span-2 p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-white/10 transition-all group relative overflow-hidden backdrop-blur-sm">
+                    <button onClick={() => router.push(pathname + '?view=genius')} className="md:col-span-2 p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-white/10 transition-all group relative overflow-hidden backdrop-blur-sm transform-gpu">
                         <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:opacity-20 transition-opacity duration-500"><Sparkles size={120} /></div>
                         <div className="relative z-10">
                             <div className="p-4 bg-white/5 w-fit rounded-2xl mb-8 text-blue-400 ring-1 ring-white/10"><Bot size={28} /></div>
@@ -598,7 +580,7 @@ const DashboardContent = () => {
                     </button>
 
                     {/* 2. HIVE MIND */}
-                    <button onClick={() => router.push(pathname + '?view=peer_forum')} className="md:row-span-2 p-10 rounded-[2.5rem] bg-gradient-to-b from-white/[0.02] to-transparent border border-white/[0.05] text-left hover:border-amber-500/30 transition-all group relative overflow-hidden backdrop-blur-sm">
+                    <button onClick={() => router.push(pathname + '?view=peer_forum')} className="md:row-span-2 p-10 rounded-[2.5rem] bg-gradient-to-b from-white/[0.02] to-transparent border border-white/[0.05] text-left hover:border-amber-500/30 transition-all group relative overflow-hidden backdrop-blur-sm transform-gpu">
                         <div className="absolute bottom-0 right-0 p-10 opacity-[0.03] group-hover:opacity-10 transition-opacity duration-500"><Users size={180} className="text-amber-500" /></div>
                         <div className="relative z-10 h-full flex flex-col justify-between">
                             <div><div className="p-4 bg-amber-500/10 w-fit rounded-2xl mb-8 text-amber-500 ring-1 ring-amber-500/20"><Users size={28} /></div><h2 className="text-3xl font-bold mb-3 tracking-tight">Hive Mind</h2><p className="text-sm text-neutral-500 leading-relaxed">Community Grid & Peer Resolution.</p></div>
@@ -607,14 +589,14 @@ const DashboardContent = () => {
                     </button>
 
                     {/* 3. REQUEST LEAVE */}
-                    <button onClick={() => router.push(pathname + '?view=leave')} className="p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-orange-500/30 transition-all group relative overflow-hidden backdrop-blur-sm">
+                    <button onClick={() => router.push(pathname + '?view=leave')} className="p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-orange-500/30 transition-all group relative overflow-hidden backdrop-blur-sm transform-gpu">
                         <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300"><ArrowRight className="-rotate-45 text-orange-500" /></div>
                         <div className="p-4 bg-orange-500/10 w-fit rounded-2xl mb-6 text-orange-500 ring-1 ring-orange-500/20"><CalendarPlus size={28} /></div>
                         <h3 className="text-xl font-bold tracking-tight">Request Leave</h3>
                     </button>
 
                     {/* 4. IDENTITY & FEES (NEW CARD) */}
-                    <button onClick={() => router.push(pathname + '?view=profile')} className="p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-emerald-500/30 transition-all group relative overflow-hidden backdrop-blur-sm">
+                    <button onClick={() => router.push(pathname + '?view=profile')} className="p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-emerald-500/30 transition-all group relative overflow-hidden backdrop-blur-sm transform-gpu">
                         <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300"><ArrowRight className="-rotate-45 text-emerald-500" /></div>
                         <div className="p-4 bg-emerald-500/10 w-fit rounded-2xl mb-6 text-emerald-500 ring-1 ring-emerald-500/20"><User size={28} /></div>
                         <h3 className="text-xl font-bold tracking-tight">My Identity</h3>

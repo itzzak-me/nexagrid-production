@@ -11,7 +11,7 @@ import {
     Wallet, Calendar as CalendarIcon, CalendarPlus, CreditCard,
     Download, ArrowRight, LogOut, FileText, Users, MessageCircle,
     ThumbsUp, HelpCircle, AlertTriangle, Zap, Lock, Clock, GraduationCap,
-    Image as ImageIcon, XCircle, Plus
+    Image as ImageIcon, XCircle, Mic, StopCircle
 } from "lucide-react";
 import {
     Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer
@@ -21,13 +21,14 @@ import {
 } from "@/lib/data";
 
 // --- TYPES ---
-type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string };
+type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string; isStreaming?: boolean };
 type SubjectChats = Record<string, ChatSession[]>;
 type Doubt = { id: number; student: string; class: string; query: string; status: string; votes: number; responses: number; time: string; };
 
 declare global {
     interface Window {
         puter: any;
+        webkitSpeechRecognition: any;
     }
 }
 
@@ -37,6 +38,40 @@ const useScrollLock = () => {
         document.body.style.overflow = "hidden";
         return () => { document.body.style.overflow = "auto"; };
     }, []);
+};
+
+// --- MARKDOWN PARSER COMPONENT ---
+const RichText = ({ content }: { content: string }) => {
+    const parts = content.split(/(```[\s\S]*?```)/g);
+    return (
+        <div className="space-y-2 leading-relaxed">
+            {parts.map((part, i) => {
+                if (part.startsWith("```")) {
+                    return (
+                        <pre key={i} className="bg-black/30 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-white/10 text-emerald-400">
+                            {part.replace(/```/g, "").trim()}
+                        </pre>
+                    );
+                }
+                return (
+                    <p key={i} className="whitespace-pre-wrap">
+                        {part.split(/(\*\*.*?\*\*|\n- .*)/g).map((chunk, j) => {
+                            if (chunk.startsWith("**") && chunk.endsWith("**")) {
+                                return <strong key={j} className="text-white font-bold">{chunk.slice(2, -2)}</strong>;
+                            }
+                            if (chunk.startsWith("\n- ")) {
+                                return <span key={j} className="block pl-4 border-l-2 border-indigo-500/50 my-1">{chunk.trim().substring(1)}</span>;
+                            }
+                            if (chunk.includes("###")) {
+                                return <span key={j} className="block text-lg font-bold text-indigo-300 mt-4 mb-2">{chunk.replace(/###/g, "")}</span>;
+                            }
+                            return chunk;
+                        })}
+                    </p>
+                );
+            })}
+        </div>
+    );
 };
 
 // --- COMPONENT: TOP NAVIGATION ---
@@ -50,7 +85,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     const [notifications, setNotifications] = useState([
         { id: 1, title: "Fee Due", desc: "Physics Module Fee Pending", time: "2h ago", icon: Wallet, color: "text-rose-500 bg-rose-500/10" },
         { id: 2, title: "Assignment", desc: "Chemistry Lab Record", time: "5h ago", icon: FileText, color: "text-blue-500 bg-blue-500/10" },
-        { id: 3, title: "System", desc: "Nexa AI v3.0 (Vision) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
+        { id: 3, title: "System", desc: "Nexa AI v4.0 (Quantum) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
     ]);
 
     useEffect(() => {
@@ -116,7 +151,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     );
 };
 
-// --- COMPONENT: PEER FORUM (UPDATED: Input Added) ---
+// --- COMPONENT: PEER FORUM ---
 const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, doubts: Doubt[], onVote: (id: number) => void, onPost: (q: string) => void }) => {
     useScrollLock();
     const [newQuestion, setNewQuestion] = useState("");
@@ -125,7 +160,6 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
     const handlePost = () => {
         if (!newQuestion.trim()) return;
         setIsPosting(true);
-        // Simulate network delay for effect
         setTimeout(() => {
             onPost(newQuestion);
             setNewQuestion("");
@@ -143,37 +177,27 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
 
             <div className="flex-1 overflow-y-auto h-full w-full no-scrollbar">
                 <div className="p-6 max-w-2xl mx-auto w-full pb-20 space-y-6">
-
-                    {/* INPUT SECTION */}
                     <div className="p-6 rounded-[2rem] bg-white/[0.02] border border-white/10 shadow-xl">
                         <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><HelpCircle size={16} className="text-amber-500" /> Ask the Hive Mind</h3>
                         <div className="relative">
                             <textarea
                                 value={newQuestion}
                                 onChange={(e) => setNewQuestion(e.target.value)}
-                                placeholder="Type your question here... (e.g., 'Does anyone have notes for Thermodynamics?')"
+                                placeholder="Type your question here..."
                                 className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl p-4 pr-12 text-sm focus:border-amber-500 outline-none transition-all placeholder:text-neutral-600 resize-none min-h-[100px]"
                             />
-                            <button
-                                onClick={handlePost}
-                                disabled={isPosting || !newQuestion.trim()}
-                                className="absolute bottom-3 right-3 p-2 bg-amber-500 text-black rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
+                            <button onClick={handlePost} disabled={isPosting || !newQuestion.trim()} className="absolute bottom-3 right-3 p-2 bg-amber-500 text-black rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                                 {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                             </button>
                         </div>
                     </div>
 
-                    {/* DOUBTS LIST */}
                     {doubts.map((doubt) => (
                         <div key={doubt.id} className="p-6 rounded-[2rem] bg-[#0A0A0A] border border-white/[0.05] hover:border-amber-500/30 transition-all duration-300 group shadow-lg">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-900 border border-white/5 flex items-center justify-center text-sm font-bold text-neutral-400 font-mono">{doubt.student.charAt(0)}</div>
-                                    <div>
-                                        <p className="text-sm font-bold text-white group-hover:text-amber-100 transition-colors">{doubt.student}</p>
-                                        <p className="text-[10px] text-neutral-500 font-mono flex items-center gap-1"><Clock size={10} /> {doubt.time} • {doubt.class}</p>
-                                    </div>
+                                    <div><p className="text-sm font-bold text-white group-hover:text-amber-100 transition-colors">{doubt.student}</p><p className="text-[10px] text-neutral-500 font-mono flex items-center gap-1"><Clock size={10} /> {doubt.time} • {doubt.class}</p></div>
                                 </div>
                                 <div className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 border backdrop-blur-md ${doubt.status === 'teacher_escalated' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' : doubt.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
                                     {doubt.status === 'teacher_escalated' ? <AlertTriangle size={10} /> : <Activity size={10} />}
@@ -183,13 +207,8 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
                             <div className="pl-[52px]">
                                 <p className="text-sm text-neutral-300 leading-relaxed mb-6 font-medium">"{doubt.query}"</p>
                                 <div className="flex items-center justify-between border-t border-white/5 pt-5">
-                                    <button onClick={() => onVote(doubt.id)} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all group/btn active:scale-95">
-                                        <Zap size={16} className="text-neutral-500 group-hover/btn:text-emerald-500 group-hover/btn:fill-emerald-500 transition-colors duration-300" />
-                                        <span className="text-xs font-bold text-neutral-400 group-hover/btn:text-white">{doubt.votes} <span className="hidden sm:inline">System Boosts</span></span>
-                                    </button>
-                                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-500/20 transition-colors">
-                                        <MessageCircle size={16} /> <span>{doubt.responses} Solutions</span>
-                                    </button>
+                                    <button onClick={() => onVote(doubt.id)} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all group/btn active:scale-95"><Zap size={16} className="text-neutral-500 group-hover/btn:text-emerald-500 transition-colors" /><span className="text-xs font-bold text-neutral-400 group-hover/btn:text-white">{doubt.votes} Boosts</span></button>
+                                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-500/20 transition-colors"><MessageCircle size={16} /> <span>{doubt.responses} Solutions</span></button>
                                 </div>
                             </div>
                         </div>
@@ -200,94 +219,105 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
     );
 };
 
-// --- COMPONENT: NEXA AI CHAT ---
+// --- COMPONENT: NEXA AI CHAT (UPGRADED: Standard Chat Flow) ---
 const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: string) => void }) => {
     useScrollLock();
     const { addToast } = useToast();
     const [activeSubject, setActiveSubject] = useState<string | null>(null);
     const [input, setInput] = useState("");
     const [history, setHistory] = useState<SubjectChats>(AI_KNOWLEDGE_BASE as unknown as SubjectChats);
-    const [isTyping, setIsTyping] = useState(false);
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [isListening, setIsListening] = useState(false);
     const [attachedImage, setAttachedImage] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll to bottom whenever history changes
+    const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    useEffect(scrollToBottom, [history, activeSubject, isStreaming]);
+
+    const handleMic = () => {
+        if (!window.webkitSpeechRecognition) {
+            addToast("Voice not supported in this browser", "error");
+            return;
+        }
+        if (isListening) {
+            setIsListening(false);
+            return;
+        }
+        const recognition = new window.webkitSpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            setInput(prev => prev + " " + transcript);
+        };
+        recognition.start();
     };
-    useEffect(scrollToBottom, [history, activeSubject]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            if (file.size > 5 * 1024 * 1024) {
-                addToast("Image too large (Max 5MB)", "error");
-                return;
-            }
             const reader = new FileReader();
             reader.onloadend = () => setAttachedImage(reader.result as string);
             reader.readAsDataURL(file);
         }
     };
 
-    const handleSend = async () => {
-        if ((!input.trim() && !attachedImage) || !activeSubject) return;
+    const handleSend = async (manualInput?: string) => {
+        const textToSend = manualInput || input;
+        if ((!textToSend.trim() && !attachedImage) || !activeSubject) return;
 
-        const userMsg = input;
-        const userImg = attachedImage;
         const newChat: ChatSession = {
             id: Date.now().toString(),
-            query: userMsg,
-            response: "Analyzing...",
+            query: textToSend,
+            response: "",
             date: "Just now",
             role: 'user',
-            image: userImg || undefined
+            image: attachedImage || undefined,
+            isStreaming: true
         };
 
-        setHistory(prev => ({ ...prev, [activeSubject]: [newChat, ...(prev[activeSubject] || [])] }));
+        // --- CHANGE 1: Append new chat to END of array (Standard Chat) ---
+        setHistory(prev => ({
+            ...prev,
+            [activeSubject]: [...(prev[activeSubject] || []), newChat]
+        }));
 
         setInput("");
         setAttachedImage(null);
-        setIsTyping(true);
+        setIsStreaming(true);
 
         try {
             if (typeof window !== 'undefined' && window.puter) {
-                const systemPrompt = `
-                ROLE: You are Nexa, a friendly AI Tutor for Class 10/11/12.
-                SUBJECT: ${activeSubject}.
-                INSTRUCTIONS: Use Analogies. If Image: Transcribe then Solve. Format clearly.
-                `;
+                const systemPrompt = `ROLE: Nexa AI. SUBJECT: ${activeSubject}. FORMAT: Markdown.`;
+                const responseStream = await window.puter.ai.chat(`${systemPrompt}\nUser: ${textToSend}`, attachedImage ? attachedImage : { stream: true, model: 'gemini-3-flash-preview' }, attachedImage ? { stream: true, model: 'gemini-3-flash-preview' } : undefined);
 
-                const visionContext = userImg ? `\n\n[IMAGE DETECTED]: Analyze the image content carefully.` : "";
-                const fullPrompt = `${systemPrompt}${visionContext}\n\nStudent: ${userMsg}`;
-
-                let response;
-                if (userImg) {
-                    response = await window.puter.ai.chat(fullPrompt, userImg, { model: 'gemini-3-flash-preview' });
-                } else {
-                    response = await window.puter.ai.chat(fullPrompt, { model: 'gemini-3-flash-preview' });
+                let fullText = "";
+                for await (const part of responseStream) {
+                    fullText += part?.text || "";
+                    setHistory(prev => ({
+                        ...prev,
+                        [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, response: fullText } : c)
+                    }));
                 }
-
-                const aiText = typeof response === 'object' ? response.message?.content || JSON.stringify(response) : response;
 
                 setHistory(prev => ({
                     ...prev,
-                    [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: aiText } : c)
+                    [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, isStreaming: false } : c)
                 }));
 
             } else {
-                setHistory(prev => ({
-                    ...prev,
-                    [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: "AI Core Offline." } : c)
-                }));
+                throw new Error("Puter Offline");
             }
         } catch (error) {
             setHistory(prev => ({
                 ...prev,
-                [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, role: 'ai', response: "Connection Error." } : c)
+                [activeSubject]: prev[activeSubject].map(c => c.id === newChat.id ? { ...c, response: "Link Failed. Try again.", isStreaming: false } : c)
             }));
         } finally {
-            setIsTyping(false);
+            setIsStreaming(false);
         }
     };
 
@@ -295,35 +325,45 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-50 bg-[#050505] flex flex-col text-white h-screen w-full">
             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#050505]/90 backdrop-blur-xl">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-[0_0_30px_rgba(79,70,229,0.3)]"><Sparkles size={24} fill="white" /></div>
-                    <div><h2 className="font-bold text-xl tracking-tight">Nexa AI</h2><p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">Vision Module Active</p></div>
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-[0_0_30px_rgba(79,70,229,0.3)] relative">
+                        <Sparkles size={24} fill="white" />
+                        {isStreaming && <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full animate-ping" />}
+                    </div>
+                    <div><h2 className="font-bold text-xl tracking-tight">Nexa AI</h2><p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">Quantum Core v4.0</p></div>
                 </div>
                 <button onClick={onClose} className="p-3 rounded-full hover:bg-white/5 transition-colors"><X size={20} /></button>
             </div>
             <div className="flex-1 overflow-y-auto h-full w-full no-scrollbar">
-                <div className="p-6 max-w-3xl mx-auto w-full pb-32">
+                <div className="p-6 max-w-3xl mx-auto w-full pb-36">
                     {!activeSubject ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
-                            {Object.keys(history).map(s => (
-                                <button key={s} onClick={() => setActiveSubject(s)} className="p-8 border border-white/5 rounded-[2rem] text-left bg-white/[0.02] hover:bg-indigo-600 hover:border-indigo-500 hover:text-white transition-all group duration-300">
-                                    <h3 className="font-bold text-xl mb-1">{s}</h3><p className="text-xs text-neutral-500 group-hover:text-white/80 font-mono uppercase tracking-wider">Initialize Module</p>
-                                </button>
-                            ))}
+                        <div className="space-y-6 mt-8">
+                            <h3 className="text-xl font-bold text-white text-center mb-8">Select Knowledge Module</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {Object.keys(history).map(s => (
+                                    <button key={s} onClick={() => setActiveSubject(s)} className="p-8 border border-white/5 rounded-[2rem] text-left bg-white/[0.02] hover:bg-indigo-600 hover:border-indigo-500 hover:text-white transition-all group duration-300">
+                                        <h3 className="font-bold text-xl mb-1">{s}</h3><p className="text-xs text-neutral-500 group-hover:text-white/80 font-mono uppercase tracking-wider">Initialize</p>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     ) : (
-                        <div className="space-y-8 flex flex-col-reverse">
-                            {history[activeSubject]?.slice().reverse().map((chat) => (
-                                <div key={chat.id} className="space-y-4">
+                        // --- CHANGE 2: Removed 'flex-col-reverse' and .reverse() for standard flow ---
+                        <div className="space-y-8 flex flex-col">
+                            {history[activeSubject]?.map((chat) => (
+                                <div key={chat.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <div className="flex justify-end flex-col items-end">
                                         {chat.image && (
-                                            <img src={chat.image} alt="Upload" className="w-48 h-auto rounded-2xl border border-white/10 mb-2 object-cover shadow-lg" />
+                                            <div className="relative group mb-2">
+                                                <img src={chat.image} alt="Upload" className="w-48 h-auto rounded-2xl border border-white/10 object-cover shadow-lg" />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent rounded-2xl" />
+                                            </div>
                                         )}
                                         <div className="bg-white text-black px-6 py-4 rounded-[1.5rem] rounded-tr-sm text-sm font-medium max-w-[85%] shadow-lg">{chat.query}</div>
                                     </div>
                                     <div className="flex justify-start items-end gap-3">
-                                        <div className="flex-1 bg-white/[0.05] border border-white/5 px-6 py-4 rounded-[1.5rem] rounded-tl-sm text-sm text-neutral-300 max-w-[85%] leading-relaxed whitespace-pre-wrap">
-                                            {chat.response}
-                                            {chat.role === 'ai' && chat.response !== "Analyzing..." && (
+                                        <div className="flex-1 bg-white/[0.05] border border-white/5 px-6 py-4 rounded-[1.5rem] rounded-tl-sm text-sm text-neutral-300 max-w-[95%] shadow-sm">
+                                            {chat.response ? <RichText content={chat.response} /> : <div className="flex items-center gap-2 text-indigo-400"><Loader2 size={14} className="animate-spin" /><span>Neural Processing...</span></div>}
+                                            {chat.role === 'ai' && !chat.isStreaming && (
                                                 <div className="mt-4 pt-4 border-t border-white/5 flex gap-2">
                                                     <span className="text-[10px] text-neutral-500 mr-auto flex items-center gap-1"><Bot size={10} /> AI Tutor</span>
                                                     <button onClick={() => onEscalate(chat.query)} className="text-[10px] font-bold text-amber-500 hover:text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 flex items-center gap-1 transition-colors"><HelpCircle size={10} /> Not Clear? Ask Peers</button>
@@ -333,16 +373,23 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
                                     </div>
                                 </div>
                             ))}
-                            <div className="pb-8"><button onClick={() => setActiveSubject(null)} className="text-xs text-neutral-500 flex items-center gap-2 hover:text-white transition-colors uppercase tracking-widest font-bold"><ArrowRight className="rotate-180" size={12} /> Return to Modules</button></div>
+                            <div className="pb-4 flex justify-center"><button onClick={() => setActiveSubject(null)} className="text-xs text-neutral-500 flex items-center gap-2 hover:text-white transition-colors uppercase tracking-widest font-bold bg-white/5 px-4 py-2 rounded-full"><ArrowRight className="rotate-180" size={12} /> Modules</button></div>
                         </div>
                     )}
-                    {isTyping && <div className="text-xs text-indigo-400 animate-pulse ml-2 flex items-center gap-2 font-mono mt-4"><Bot size={14} /> Analyzing Query...</div>}
+                    {/* SCROLL ANCHOR */}
                     <div ref={messagesEndRef} />
                 </div>
             </div>
             {activeSubject && (
                 <div className="p-6 bg-[#050505]/80 backdrop-blur-xl border-t border-white/5 absolute bottom-0 left-0 right-0">
                     <div className="relative max-w-3xl mx-auto flex flex-col gap-3">
+                        {!input && !attachedImage && (
+                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                                {["Explain this concept", "Create a Quiz", "Summarize Notes"].map(q => (
+                                    <button key={q} onClick={() => handleSend(q)} className="whitespace-nowrap px-4 py-1.5 rounded-full bg-white/5 border border-white/5 text-[10px] hover:bg-white/10 transition-colors text-neutral-400 hover:text-white">{q}</button>
+                                ))}
+                            </div>
+                        )}
                         {attachedImage && (
                             <div className="flex items-center gap-3 bg-white/10 p-2 rounded-xl w-fit pr-4 animate-in slide-in-from-bottom-2">
                                 <img src={attachedImage} alt="Preview" className="w-10 h-10 rounded-lg object-cover" />
@@ -350,15 +397,14 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
                                 <button onClick={() => setAttachedImage(null)} className="p-1 rounded-full bg-white/10 hover:bg-white/20"><XCircle size={14} /></button>
                             </div>
                         )}
-                        <div className="relative">
-                            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={attachedImage ? "Ask about this image..." : "Ask a doubt..."} className="w-full bg-[#111] border border-white/10 rounded-full py-5 pl-14 pr-16 text-sm focus:border-indigo-500 outline-none transition-all placeholder:text-neutral-700" disabled={isTyping} />
-
-                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
-                            <button onClick={() => fileInputRef.current?.click()} className="absolute left-2 top-2 p-3 text-neutral-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"><ImageIcon size={20} /></button>
-
-                            <button onClick={handleSend} disabled={isTyping} className="absolute right-2 top-2 p-3 bg-indigo-600 rounded-full hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
-                                {isTyping ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                            </button>
+                        <div className="relative flex items-center gap-2">
+                            <div className="relative flex-1">
+                                <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={isListening ? "Listening..." : "Ask anything..."} className={`w-full bg-[#111] border ${isListening ? 'border-red-500/50' : 'border-white/10'} rounded-full py-4 pl-12 pr-12 text-sm focus:border-indigo-500 outline-none transition-all placeholder:text-neutral-700`} disabled={isStreaming} />
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
+                                <button onClick={() => fileInputRef.current?.click()} className="absolute left-2 top-2 p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"><ImageIcon size={20} /></button>
+                                <button onClick={handleMic} className={`absolute right-2 top-2 p-2 rounded-full transition-colors ${isListening ? 'text-red-500 bg-red-500/10 animate-pulse' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>{isListening ? <StopCircle size={20} /> : <Mic size={20} />}</button>
+                            </div>
+                            <button onClick={() => handleSend()} disabled={isStreaming} className="p-4 bg-indigo-600 rounded-full hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed">{isStreaming ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}</button>
                         </div>
                     </div>
                 </div>
@@ -390,7 +436,7 @@ const StudentProfile = ({ onClose }: { onClose: () => void }) => {
     const { themeColor } = useConfig();
     const activeColor = `rgb(${themeColor})`;
     const [activeTab, setActiveTab] = useState<'academic' | 'financial'>('academic'); // NEW: Tabs
-    const [selectedExam, setSelectedExam] = useState("Predicted Final");
+    const [selectedExam, setSelectedExam] = useState(Object.keys(EXAM_DATA)[0]);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const { addToast } = useToast();
 
@@ -434,14 +480,14 @@ const StudentProfile = ({ onClose }: { onClose: () => void }) => {
                         {activeTab === 'academic' ? (
                             <motion.div key="academic" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
                                 <div className="grid grid-cols-2 gap-4"><div className="p-6 rounded-[2rem] bg-white/[0.02] border border-white/[0.05] flex flex-col items-center justify-center hover:bg-white/[0.04] transition-colors"><Award className="text-yellow-500 mb-3 drop-shadow-[0_0_10px_rgba(234,179,8,0.3)]" size={28} /><p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Class Rank</p><h4 className="text-4xl font-black mt-2 tracking-tighter">05</h4></div><div className="p-6 rounded-[2rem] bg-white/[0.02] border border-white/[0.05] flex flex-col items-center justify-center hover:bg-white/[0.04] transition-colors"><Activity className="text-emerald-500 mb-3 drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]" size={28} /><p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Attendance</p><h4 className="text-4xl font-black mt-2 text-emerald-400 tracking-tighter">92%</h4></div></div>
-                                <div className="w-full bg-white/[0.02] border border-white/[0.05] rounded-[2.5rem] p-8 relative z-10 backdrop-blur-sm"><div className="flex justify-between items-start mb-8"><div><h3 className="text-lg font-bold text-white tracking-tight">Performance Matrix</h3><p className="text-xs text-neutral-500 mt-1 font-mono uppercase tracking-wider">Analytics Engine v2.0</p></div><div className="relative"><button onClick={() => setIsMenuOpen(!isMenuOpen)} className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/5 px-4 py-2 rounded-xl text-xs font-bold transition-all text-neutral-300 hover:text-white">{selectedExam} <ChevronDown size={14} className={`transition-transform duration-300 ${isMenuOpen ? "rotate-180" : ""}`} /></button><AnimatePresence>{isMenuOpen && (<motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 top-full mt-2 w-48 bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 p-1">{Object.keys(EXAM_DATA).map(e => (<button key={e} onClick={() => { setSelectedExam(e); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-xs font-medium text-neutral-400 hover:text-white hover:bg-white/10 rounded-xl transition-all">{e}</button>))}</motion.div>)}</AnimatePresence></div></div><div className="flex flex-col lg:flex-row items-center gap-10"><div className="h-[280px] w-full lg:w-1/2 -ml-4"><ResponsiveContainer width="100%" height="100%"><RadarChart cx="50%" cy="50%" outerRadius="70%" data={EXAM_DATA[selectedExam]}><PolarGrid stroke="#333" strokeDasharray="4 4" /><PolarAngleAxis dataKey="subject" tick={{ fill: "#737373", fontSize: 10, fontWeight: "bold", dy: 4 }} /><Radar dataKey="A" stroke={activeColor} strokeWidth={3} fill={activeColor} fillOpacity={0.2} isAnimationActive={true} /></RadarChart></ResponsiveContainer></div><div className="w-full lg:w-1/2 space-y-3">{EXAM_DATA[selectedExam].map((item) => (<motion.div layoutId={`${selectedExam}-${item.subject}`} key={item.subject} className="flex justify-between items-center p-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.05] transition-all group"><div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${item.subject === "Physics" ? "bg-blue-500" : item.subject === "Chemistry" ? "bg-emerald-500" : item.subject === "Mathematics" ? "bg-red-500" : "bg-amber-500"} shadow-[0_0_8px_currentColor]`} /><span className="text-xs font-bold text-neutral-400 group-hover:text-white transition-colors">{item.subject}</span></div><div className="flex items-baseline gap-1.5"><span className="text-lg font-bold text-white tabular-nums">{item.A}</span><span className="text-[10px] text-neutral-600 font-mono">/100</span></div></motion.div>))}</div></div></div>
+                                <div className="w-full bg-white/[0.02] border border-white/[0.05] rounded-[2.5rem] p-8 relative z-10 backdrop-blur-sm"><div className="flex justify-between items-start mb-8"><div><h3 className="text-lg font-bold text-white tracking-tight">Performance Matrix</h3><p className="text-xs text-neutral-500 mt-1 font-mono uppercase tracking-wider">Analytics Engine v2.0</p></div><div className="relative"><button onClick={() => setIsMenuOpen(!isMenuOpen)} className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/5 px-4 py-2 rounded-xl text-xs font-bold transition-all text-neutral-300 hover:text-white">{selectedExam} <ChevronDown size={14} className={`transition-transform duration-300 ${isMenuOpen ? "rotate-180" : ""}`} /></button><AnimatePresence>{isMenuOpen && (<motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 top-full mt-2 w-48 bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 p-1">{Object.keys(EXAM_DATA).map(e => (<button key={e} onClick={() => { setSelectedExam(e); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-xs font-medium text-neutral-400 hover:text-white hover:bg-white/10 rounded-xl transition-all">{e}</button>))}</motion.div>)}</AnimatePresence></div></div><div className="flex flex-col lg:flex-row items-center gap-10"><div className="h-[280px] w-full lg:w-1/2 -ml-4"><ResponsiveContainer width="100%" height="100%"><RadarChart cx="50%" cy="50%" outerRadius="70%" data={EXAM_DATA[selectedExam] || []}><PolarGrid stroke="#333" strokeDasharray="4 4" /><PolarAngleAxis dataKey="subject" tick={{ fill: "#737373", fontSize: 10, fontWeight: "bold", dy: 4 }} /><Radar dataKey="A" stroke={activeColor} strokeWidth={3} fill={activeColor} fillOpacity={0.2} isAnimationActive={true} /></RadarChart></ResponsiveContainer></div><div className="w-full lg:w-1/2 space-y-3">{(EXAM_DATA[selectedExam] || []).map((item) => (<motion.div layoutId={`${selectedExam}-${item.subject}`} key={item.subject} className="flex justify-between items-center p-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.05] transition-all group"><div className="flex items-center gap-4"><div className={`w-2 h-2 rounded-full ${item.subject === "Physics" ? "bg-blue-500" : item.subject === "Chemistry" ? "bg-emerald-500" : item.subject === "Mathematics" ? "bg-red-500" : "bg-amber-500"} shadow-[0_0_8px_currentColor]`} /><span className="text-xs font-bold text-neutral-400 group-hover:text-white transition-colors">{item.subject}</span></div><div className="flex items-baseline gap-1.5"><span className="text-lg font-bold text-white tabular-nums">{item.A}</span><span className="text-[10px] text-neutral-600 font-mono">/100</span></div></motion.div>))}</div></div></div>
                                 <AttendanceCalendar />
                             </motion.div>
                         ) : (
                             <motion.div key="financial" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
                                 {/* Financial Card */}
                                 <div className="relative h-64 rounded-[2.5rem] bg-gradient-to-br from-[#0f172a] to-[#000] border border-white/10 p-8 flex flex-col justify-between overflow-hidden group shadow-2xl">
-                                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay pointer-events-none"></div><div className="absolute -right-20 -top-20 w-64 h-64 bg-emerald-500/30 blur-[80px] rounded-full group-hover:bg-emerald-500/40 transition-colors duration-500" /><div className="flex justify-between items-start relative z-10"><div className="flex items-center gap-2"><div className="p-2 bg-emerald-500/20 rounded-lg backdrop-blur-md"><Wallet className="text-emerald-400" size={20} /></div><span className="text-emerald-100/50 font-mono text-[10px] uppercase tracking-widest">Secure Vault</span></div><Activity className="text-emerald-500/50" /></div><div className="relative z-10"><p className="text-emerald-200/60 text-xs font-mono uppercase mb-2 tracking-widest">Total Outstanding</p><h2 className="text-5xl font-medium text-white tracking-tighter">₹{FINANCIAL_DATA.balance.toLocaleString()}</h2></div><div className="flex justify-between items-end relative z-10 border-t border-white/10 pt-4"><div><p className="text-[10px] text-emerald-200/40 uppercase tracking-widest mb-1">Student Identifier</p><p className="font-mono text-emerald-100 text-sm">STU-8821-X</p></div><div className="text-right"><p className="text-[10px] text-emerald-200/40 uppercase tracking-widest mb-1">Valid Thru</p><p className="font-mono text-emerald-100 text-sm">12/28</p></div></div>
+                                    <div className="absolute inset-0 bg-neutral-900 opacity-20 brightness-100 contrast-150 mix-blend-overlay pointer-events-none"></div><div className="absolute -right-20 -top-20 w-64 h-64 bg-emerald-500/30 blur-[80px] rounded-full group-hover:bg-emerald-500/40 transition-colors duration-500" /><div className="flex justify-between items-start relative z-10"><div className="flex items-center gap-2"><div className="p-2 bg-emerald-500/20 rounded-lg backdrop-blur-md"><Wallet className="text-emerald-400" size={20} /></div><span className="text-emerald-100/50 font-mono text-[10px] uppercase tracking-widest">Secure Vault</span></div><Activity className="text-emerald-500/50" /></div><div className="relative z-10"><p className="text-emerald-200/60 text-xs font-mono uppercase mb-2 tracking-widest">Total Outstanding</p><h2 className="text-5xl font-medium text-white tracking-tighter">₹{FINANCIAL_DATA.balance.toLocaleString()}</h2></div><div className="flex justify-between items-end relative z-10 border-t border-white/10 pt-4"><div><p className="text-[10px] text-emerald-200/40 uppercase tracking-widest mb-1">Student Identifier</p><p className="font-mono text-emerald-100 text-sm">STU-8821-X</p></div><div className="text-right"><p className="text-[10px] text-emerald-200/40 uppercase tracking-widest mb-1">Valid Thru</p><p className="font-mono text-emerald-100 text-sm">12/28</p></div></div>
                                 </div>
 
                                 {/* Pay Button */}

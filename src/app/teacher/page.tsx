@@ -6,27 +6,65 @@ import { useToast } from "@/context/ToastContext";
 import { useConfig } from "@/context/ConfigContext";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
-    Users, CheckCircle2, Clock, Calendar,
+    Users, CheckCircle2, Clock, Calendar as CalendarIcon, // <--- Aliased Import
     ChevronRight, Bell, Atom, Sparkles, Bot,
     FileText, PenTool, Check, X, Shield,
     Megaphone, AlertTriangle, ArrowRight,
     User, Mail, Phone, MapPin, Award, BookOpen, Star, ChevronDown, Edit2, Save,
-    LogOut, Lock, Loader2, HelpCircle, MessageCircle, Send, Image as ImageIcon, XCircle
+    LogOut, Lock, Loader2, HelpCircle, MessageCircle, Send, Image as ImageIcon, XCircle, Mic, StopCircle
 } from "lucide-react";
 import { MOCK_CLASS_LIST, PENDING_LEAVES, TEACHER_DIRECTORY, TEACHER_SCHEDULE, PEER_DOUBTS } from "@/lib/data";
 
-// Type definition for Puter.js
+// --- TYPES ---
+type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string; isStreaming?: boolean };
+
 declare global {
     interface Window {
         puter: any;
+        webkitSpeechRecognition: any;
     }
 }
 
+// --- SCROLL LOCK HOOK ---
 const useScrollLock = () => {
     useEffect(() => {
         document.body.style.overflow = "hidden";
         return () => { document.body.style.overflow = "auto"; };
     }, []);
+};
+
+// --- MARKDOWN PARSER ---
+const RichText = ({ content }: { content: string }) => {
+    const parts = content.split(/(```[\s\S]*?```)/g);
+    return (
+        <div className="space-y-2 leading-relaxed text-sm">
+            {parts.map((part, i) => {
+                if (part.startsWith("```")) {
+                    return (
+                        <pre key={i} className="bg-black/30 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-white/10 text-amber-400 my-2">
+                            {part.replace(/```/g, "").trim()}
+                        </pre>
+                    );
+                }
+                return (
+                    <div key={i} className="whitespace-pre-wrap">
+                        {part.split(/(\*\*.*?\*\*|\n- .*|### .*)/g).map((chunk, j) => {
+                            if (chunk.startsWith("**") && chunk.endsWith("**")) {
+                                return <strong key={j} className="text-white font-bold">{chunk.slice(2, -2)}</strong>;
+                            }
+                            if (chunk.startsWith("\n- ")) {
+                                return <div key={j} className="flex gap-2 my-1 pl-2"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-2 shrink-0" /><span className="text-neutral-300">{chunk.trim().substring(1)}</span></div>;
+                            }
+                            if (chunk.startsWith("###")) {
+                                return <h3 key={j} className="text-lg font-bold text-amber-400 mt-4 mb-2">{chunk.replace(/###/g, "").trim()}</h3>;
+                            }
+                            return chunk;
+                        })}
+                    </div>
+                );
+            })}
+        </div>
+    );
 };
 
 // --- COMPONENT: TOP NAVIGATION ---
@@ -38,7 +76,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
     const [notifications, setNotifications] = useState([
-        { id: 1, title: "Leave Request", desc: "Kabir Mehta (10-A) applied for sick leave.", time: "10m ago", icon: Calendar, color: "text-orange-500 bg-orange-500/10" },
+        { id: 1, title: "Leave Request", desc: "Kabir Mehta (10-A) applied for sick leave.", time: "10m ago", icon: CalendarIcon, color: "text-orange-500 bg-orange-500/10" },
         { id: 2, title: "Doubt Escalation", desc: "5 unresolved doubts in Physics Hive.", time: "30m ago", icon: HelpCircle, color: "text-amber-500 bg-amber-500/10" },
         { id: 3, title: "Admin Alert", desc: "Submit monthly attendance report.", time: "5h ago", icon: Shield, color: "text-rose-500 bg-rose-500/10" }
     ]);
@@ -104,7 +142,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
                                     <p className="text-[10px] text-neutral-500 font-mono">ID: FAC-8821</p>
                                 </div>
                                 <button onClick={() => { onViewChange('profile'); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-xs font-medium text-neutral-300 hover:text-white transition-colors"><User size={16} /> My Identity</button>
-                                <button onClick={() => { onViewChange('request_leave'); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-xs font-medium text-neutral-300 hover:text-white transition-colors"><Calendar size={16} /> Leave History</button>
+                                <button onClick={() => { onViewChange('request_leave'); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-xs font-medium text-neutral-300 hover:text-white transition-colors"><CalendarIcon size={16} /> Leave History</button>
                                 <div className="h-px bg-white/5 my-1.5" />
                                 <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-rose-500/10 text-xs font-medium text-rose-500 transition-colors"><LogOut size={16} /> Logout System</button>
                             </motion.div>
@@ -116,169 +154,178 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     );
 };
 
-// --- COMPONENT: TEACHER AI CHAT (ENHANCED SYSTEM PROMPT) ---
+// --- COMPONENT: TEACHER AI CHAT (Quantum Core v4.0) ---
 const TeacherAiChat = ({ onClose }: { onClose: () => void }) => {
+    useScrollLock();
     const { addToast } = useToast();
     const [input, setInput] = useState("");
-    const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string, image?: string }[]>([
-        { role: 'ai', text: "Hello! I am Nexa (Powered by Gemini 3). Upload an image of a physics problem or ask me to draft a quiz. I'm ready to assist." }
-    ]);
-    const [isTyping, setIsTyping] = useState(false);
+    const [history, setHistory] = useState<ChatSession[]>([]);
+    const [isStreaming, setIsStreaming] = useState(false);
+    const [isListening, setIsListening] = useState(false);
     const [attachedImage, setAttachedImage] = useState<string | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    useEffect(scrollToBottom, [history, isStreaming]);
+
+    const handleMic = () => {
+        if (!window.webkitSpeechRecognition) {
+            addToast("Voice not supported in this browser", "error");
+            return;
+        }
+        if (isListening) { setIsListening(false); return; }
+        const recognition = new window.webkitSpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            setInput(prev => prev + " " + transcript);
+        };
+        recognition.start();
     };
-    useEffect(scrollToBottom, [messages]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            if (file.size > 5 * 1024 * 1024) {
-                addToast("Image too large. Limit is 5MB.", "error");
-                return;
-            }
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setAttachedImage(reader.result as string);
-            };
+            reader.onloadend = () => setAttachedImage(reader.result as string);
             reader.readAsDataURL(file);
         }
     };
 
-    const handleSend = async () => {
-        if (!input.trim() && !attachedImage) return;
+    const handleSend = async (manualInput?: string) => {
+        const textToSend = manualInput || input;
+        if (!textToSend.trim() && !attachedImage) return;
 
-        const userMsg = input;
-        const userImage = attachedImage;
-        setMessages(prev => [...prev, { role: 'user', text: userMsg, image: userImage || undefined }]);
+        const newChat: ChatSession = {
+            id: Date.now().toString(),
+            query: textToSend,
+            response: "",
+            date: "Just now",
+            role: 'user',
+            image: attachedImage || undefined,
+            isStreaming: true
+        };
+
+        setHistory(prev => [...prev, newChat]);
 
         setInput("");
         setAttachedImage(null);
-        setIsTyping(true);
+        setIsStreaming(true);
 
         try {
             if (typeof window !== 'undefined' && window.puter) {
-                // --- 1. SYSTEM CONTEXT (PERSONA) ---
-                const systemContext = `
-        ROLE: You are Nexa, an elite Senior Faculty Assistant at 'Scholars Coaching Point'.
-        TONE: Professional, Academic, Encouraging, and Precise.
-        AUDIENCE: You are speaking to a fellow Teacher. Use appropriate terminology (e.g., 'concept', 'pedagogy', 'derivation').
-        
-        INSTRUCTIONS:
-        1. If the user asks for a quiz, format it clearly with numbered questions.
-        2. If the user asks for a solution, provide a step-by-step derivation.
-        3. If an IMAGE is provided, your priority is ACCURACY.
-           - First, transcribe any text or equations you see in the image to confirm understanding.
-           - Identify the core concept (e.g., "This is a projectile motion problem").
-           - Solve it methodically.
-        4. Do not hallucinate. If the image is blurry, ask for a re-upload.
-        `;
+                // TEACHER-SPECIFIC SYSTEM PROMPT
+                const systemPrompt = `ROLE: Nexa AI (Faculty Assistant). 
+                TASK: Assist with lesson planning, creating quizzes, grading rubrics, and simplifying concepts for students.
+                STYLE: Professional, Structured, Efficient.
+                FORMAT: Use **bold** for key terms, ### Headers for sections, and - lists for steps.
+                ${attachedImage ? "IMAGE MODE: Transcribe handwritten notes or analyze charts." : ""}`;
 
-                // --- 2. VISION-SPECIFIC INSTRUCTION ---
-                const visionInstruction = userImage
-                    ? `\n\n[SYSTEM NOTICE: The user has attached an image. Analyze it pixel-by-pixel. Extract all numbers, diagrams, and text before solving. If it's a handwriting, transcribe it first.]`
-                    : "";
+                const responseStream = await window.puter.ai.chat(`${systemPrompt}\nTeacher: ${textToSend}`, attachedImage ? attachedImage : { stream: true, model: 'gemini-3-flash-preview' }, attachedImage ? { stream: true, model: 'gemini-3-flash-preview' } : undefined);
 
-                const fullPrompt = `${systemContext}${visionInstruction}\n\nUser Query: ${userMsg}`;
-
-                // Call Gemini via Puter.js
-                let response;
-                if (userImage) {
-                    response = await window.puter.ai.chat(fullPrompt, userImage, {
-                        model: 'gemini-3-flash-preview',
-                        stream: false
-                    });
-                } else {
-                    response = await window.puter.ai.chat(fullPrompt, {
-                        model: 'gemini-3-flash-preview',
-                        stream: false
-                    });
+                let fullText = "";
+                for await (const part of responseStream) {
+                    fullText += part?.text || "";
+                    setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, response: fullText } : c));
                 }
 
-                const aiText = typeof response === 'object' ? response.message?.content || JSON.stringify(response) : response;
-                setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+                setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, isStreaming: false } : c));
+
             } else {
-                setMessages(prev => [...prev, { role: 'ai', text: "System Error: Neural Uplink Offline (Puter.js not loaded)." }]);
+                throw new Error("Puter Offline");
             }
         } catch (error) {
-            console.error("AI Error:", error);
-            setMessages(prev => [...prev, { role: 'ai', text: "Error: Connection interrupted. Please try again." }]);
-            addToast("AI Connection Failed", "error");
+            setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, response: "AI Service Unreachable. Please verify connection.", isStreaming: false } : c));
         } finally {
-            setIsTyping(false);
+            setIsStreaming(false);
         }
     };
 
     return (
-        <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="fixed inset-0 z-[60] bg-[#050505] flex flex-col text-white h-screen w-full">
-            <div className="p-6 border-b border-white/[0.05] flex justify-between items-center bg-[#050505]/90 backdrop-blur-xl sticky top-0 z-50">
-                <button onClick={onClose} className="p-3 rounded-full hover:bg-white/5 transition-colors"><ChevronRight className="rotate-180" /></button>
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center"><Sparkles size={16} /></div>
-                    <div>
-                        <span className="font-mono text-xs uppercase tracking-[0.2em] text-indigo-400 block">Nexa AI</span>
-                        <span className="text-[9px] text-neutral-500">v3.0 (Vision Enabled)</span>
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-50 bg-[#050505] flex flex-col text-white h-screen w-full">
+            {/* Header */}
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#050505]/90 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.3)] relative">
+                        <Sparkles size={24} className="text-black" />
+                        {isStreaming && <span className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping" />}
                     </div>
+                    <div><h2 className="font-bold text-xl tracking-tight">Nexa Faculty</h2><p className="text-[10px] text-amber-500 font-mono tracking-widest uppercase">Assistant v4.0</p></div>
                 </div>
-                <div className="w-10" />
+                <button onClick={onClose} className="p-3 rounded-full hover:bg-white/5 transition-colors"><X size={20} /></button>
             </div>
 
+            {/* Chat Area */}
             <div className="flex-1 overflow-y-auto h-full w-full no-scrollbar">
-                <div className="p-6 max-w-3xl mx-auto pb-40 space-y-6">
-                    {messages.map((msg, i) => (
-                        <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            {msg.image && (
-                                <div className="relative group">
-                                    <img src={msg.image} alt="User Upload" className="w-48 h-auto rounded-xl border border-white/10 mb-2 object-cover shadow-lg shadow-black/50" />
-                                    <div className="absolute inset-0 bg-black/20 rounded-xl pointer-events-none group-hover:bg-transparent transition-colors" />
-                                </div>
-                            )}
-                            <div className={`max-w-[85%] p-5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-white/5 border border-white/5 text-neutral-300 rounded-tl-sm'}`}>
-                                {msg.text}
-                            </div>
+                <div className="p-6 max-w-4xl mx-auto w-full pb-36">
+                    {history.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-[60vh] text-center opacity-50">
+                            <Bot size={64} className="text-amber-500 mb-6" />
+                            <h3 className="text-2xl font-bold mb-2">Ready to Assist</h3>
+                            <p className="text-sm text-neutral-400 max-w-sm">I can draft lesson plans, create quizzes from text, or analyze student performance.</p>
                         </div>
-                    ))}
-                    {isTyping && (
-                        <div className="flex items-center gap-3 ml-2">
-                            <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center"><Bot size={16} className="text-indigo-400 animate-pulse" /></div>
-                            <div className="text-xs text-neutral-500 font-mono typing-animation">Analyzing visual data...</div>
+                    ) : (
+                        <div className="space-y-8 flex flex-col">
+                            {history.map((chat) => (
+                                <div key={chat.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    {/* User Bubble */}
+                                    <div className="flex justify-end flex-col items-end">
+                                        {chat.image && (
+                                            <div className="relative group mb-2">
+                                                <img src={chat.image} alt="Upload" className="w-48 h-auto rounded-2xl border border-white/10 object-cover shadow-lg" />
+                                            </div>
+                                        )}
+                                        <div className="bg-white text-black px-6 py-4 rounded-[1.5rem] rounded-tr-sm text-sm font-medium max-w-[85%] shadow-lg">{chat.query}</div>
+                                    </div>
+
+                                    {/* AI Bubble */}
+                                    <div className="flex justify-start items-end gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0"><Bot size={14} className="text-amber-500" /></div>
+                                        <div className="flex-1 bg-white/[0.05] border border-white/5 px-6 py-5 rounded-[1.5rem] rounded-tl-sm text-neutral-200 max-w-[95%] shadow-sm">
+                                            {chat.response ? <RichText content={chat.response} /> : <div className="flex items-center gap-2 text-amber-400"><Loader2 size={14} className="animate-spin" /><span>Generating Content...</span></div>}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                     <div ref={messagesEndRef} />
                 </div>
             </div>
 
+            {/* Input Area */}
             <div className="p-6 bg-[#050505]/80 backdrop-blur-xl border-t border-white/5 absolute bottom-0 left-0 right-0">
-                <div className="relative max-w-3xl mx-auto flex flex-col gap-3">
-                    {attachedImage && (
-                        <div className="flex items-center gap-3 bg-white/10 p-2 rounded-xl w-fit pr-4 animate-in slide-in-from-bottom-2 fade-in">
-                            <img src={attachedImage} alt="Preview" className="w-10 h-10 rounded-lg object-cover" />
-                            <span className="text-xs text-neutral-300 font-medium">Image Attached</span>
-                            <button onClick={() => setAttachedImage(null)} className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-neutral-400 hover:text-white transition-colors"><XCircle size={14} /></button>
+                <div className="relative max-w-4xl mx-auto flex flex-col gap-3">
+                    {/* Quick Chips (Teacher Focused) */}
+                    {!input && !attachedImage && (
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                            {["Draft Lesson Plan for Thermodynamics", "Create a 5-question Quiz on Algebra", "Write an email to parents about field trip"].map(q => (
+                                <button key={q} onClick={() => handleSend(q)} className="whitespace-nowrap px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] hover:bg-amber-500/20 transition-colors text-amber-500 font-bold">{q}</button>
+                            ))}
                         </div>
                     )}
 
-                    <div className="relative">
-                        <input
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder={attachedImage ? "Add instructions for this image..." : "Draft a quiz, explain a concept, or upload a problem..."}
-                            className="w-full bg-[#111] border border-white/10 rounded-full py-5 pl-14 pr-16 text-sm focus:border-indigo-500 outline-none transition-all placeholder:text-neutral-600 text-base shadow-inner shadow-black/50"
-                            disabled={isTyping}
-                        />
+                    {/* Image Preview */}
+                    {attachedImage && (
+                        <div className="flex items-center gap-3 bg-white/10 p-2 rounded-xl w-fit pr-4 animate-in slide-in-from-bottom-2">
+                            <img src={attachedImage} alt="Preview" className="w-10 h-10 rounded-lg object-cover" />
+                            <span className="text-xs text-neutral-300">Image Attached</span>
+                            <button onClick={() => setAttachedImage(null)} className="p-1 rounded-full bg-white/10 hover:bg-white/20"><XCircle size={14} /></button>
+                        </div>
+                    )}
 
-                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
-
-                        <button onClick={() => fileInputRef.current?.click()} className="absolute left-2 top-2 p-3 text-neutral-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-full transition-all" title="Upload Image">
-                            <ImageIcon size={20} />
-                        </button>
-
-                        <button onClick={handleSend} disabled={isTyping || (!input.trim() && !attachedImage)} className="absolute right-2 top-2 p-3 bg-indigo-600 rounded-full hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
-                            {isTyping ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                    <div className="relative flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={isListening ? "Listening..." : "Ask about class performance, lesson plans..."} className={`w-full bg-[#111] border ${isListening ? 'border-red-500/50' : 'border-white/10'} rounded-full py-4 pl-12 pr-12 text-sm focus:border-amber-500 outline-none transition-all placeholder:text-neutral-700`} disabled={isStreaming} />
+                            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
+                            <button onClick={() => fileInputRef.current?.click()} className="absolute left-2 top-2 p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"><ImageIcon size={20} /></button>
+                            <button onClick={handleMic} className={`absolute right-2 top-2 p-2 rounded-full transition-colors ${isListening ? 'text-red-500 bg-red-500/10 animate-pulse' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>{isListening ? <StopCircle size={20} /> : <Mic size={20} />}</button>
+                        </div>
+                        <button onClick={() => handleSend()} disabled={isStreaming} className="p-4 bg-amber-500 rounded-full hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-black">
+                            {isStreaming ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                         </button>
                     </div>
                 </div>
@@ -287,9 +334,26 @@ const TeacherAiChat = ({ onClose }: { onClose: () => void }) => {
     );
 };
 
-// ... REST OF THE COMPONENTS (AttendanceRegister, Gradebook, etc.) ...
-// These remain unchanged to maintain dashboard functionality. 
-// I will include them here to ensure the file is complete and error-free.
+// --- COMPONENT: TEACHER SCHEDULE CARD ---
+const TeacherSchedule = () => (
+    <div className="p-8 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] h-full">
+        <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><CalendarIcon size={20} className="text-amber-500" /> Today's Schedule</h3>
+        <div className="space-y-4">
+            {TEACHER_SCHEDULE.map((slot) => (
+                <div key={slot.id} className={`p-4 rounded-2xl border ${slot.status === 'live' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-white/5 border-white/5'} flex justify-between items-center group transition-colors`}>
+                    <div>
+                        <p className="text-xs font-bold text-neutral-400 mb-1">{slot.time}</p>
+                        <h4 className="text-sm font-bold text-white">{slot.class} • {slot.subject}</h4>
+                        <p className="text-[10px] text-neutral-500 mt-1">{slot.topic}</p>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${slot.status === 'live' ? 'bg-amber-500 text-black animate-pulse' : 'bg-white/10 text-neutral-400'}`}>
+                        {slot.status}
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
 // --- COMPONENT: ATTENDANCE REGISTER ---
 const AttendanceRegister = ({ onClose, classId, onLog }: { onClose: () => void, classId: string, onLog: (a: string, d: string) => void }) => {
@@ -749,7 +813,7 @@ const TeacherDashboardContent = () => {
     const [activityLog, setActivityLog] = useState([
         { id: 1, time: "09:30 AM", action: "Attendance Synced", detail: "Class 10-A • Physics", icon: CheckCircle2, color: "text-emerald-500" },
         { id: 2, time: "Yesterday", action: "Grades Uploaded", detail: "Unit Test 1 Results", icon: FileText, color: "text-blue-500" },
-        { id: 3, time: "2 days ago", action: "Leave Approved", detail: "Rohan Das (Medical)", icon: Calendar, color: "text-orange-500" }
+        { id: 3, time: "2 days ago", action: "Leave Approved", detail: "Rohan Das (Medical)", icon: CalendarIcon, color: "text-orange-500" }
     ]);
 
     const handleLogActivity = (action: string, detail: string) => {
@@ -802,7 +866,7 @@ const TeacherDashboardContent = () => {
                 <section className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-5">
 
                     {/* ROW 1: AI & DOUBTS (Large Cards - col-span-2) */}
-                    <button onClick={() => router.push(pathname + '?view=ai_chat')} className="p-5 sm:p-8 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-indigo-500/30 transition-all group relative overflow-hidden col-span-2">
+                    <button onClick={() => router.push(pathname + '?view=ai_assistant')} className="p-5 sm:p-8 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-indigo-500/30 transition-all group relative overflow-hidden col-span-2">
                         <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity"><Sparkles size={100} /></div>
                         <div className="relative z-10 flex items-center gap-4 sm:gap-6">
                             <div className="p-3 sm:p-4 bg-indigo-500/10 w-fit rounded-2xl text-indigo-400"><Bot size={24} /></div>
@@ -844,7 +908,7 @@ const TeacherDashboardContent = () => {
                         <div className="relative z-10"><div className="p-3 sm:p-4 bg-rose-500/10 w-fit rounded-2xl mb-4 sm:mb-6 text-rose-500"><Megaphone size={24} /></div><h2 className="text-lg sm:text-2xl font-bold mb-1 sm:mb-2">Broadcast</h2><p className="text-xs sm:text-sm text-neutral-500">Class announcements.</p></div>
                     </button>
                     <button onClick={() => router.push(pathname + '?view=leaves')} className="p-5 sm:p-8 rounded-[2.5rem] bg-gradient-to-br from-white/[0.02] to-transparent border border-white/[0.05] text-left hover:border-orange-500/30 transition-all group relative overflow-hidden">
-                        <div className="flex justify-between items-start mb-4 sm:mb-6"><div className="p-3 sm:p-4 bg-orange-500/10 w-fit rounded-2xl text-orange-500"><Calendar size={24} /></div>{PENDING_LEAVES.length > 0 && <span className="bg-orange-500 text-black text-[10px] font-bold px-2 py-1 rounded-full">{PENDING_LEAVES.length} New</span>}</div>
+                        <div className="flex justify-between items-start mb-4 sm:mb-6"><div className="p-3 sm:p-4 bg-orange-500/10 w-fit rounded-2xl text-orange-500"><CalendarIcon size={24} /></div>{PENDING_LEAVES.length > 0 && <span className="bg-orange-500 text-black text-[10px] font-bold px-2 py-1 rounded-full">{PENDING_LEAVES.length} New</span>}</div>
                         <h2 className="text-lg sm:text-2xl font-bold mb-1 sm:mb-2">Requests</h2><p className="text-xs sm:text-sm text-neutral-500">Student approvals.</p>
                     </button>
                 </section>
@@ -882,7 +946,7 @@ const TeacherDashboardContent = () => {
                 {currentView === 'broadcast' && <BroadcastComposer classId={selectedClass} onClose={() => router.back()} onLog={handleLogActivity} />}
                 {currentView === 'profile' && <TeacherProfile onClose={() => router.back()} />}
                 {currentView === 'doubts' && <DoubtResolutionModal onClose={() => router.back()} onLog={handleLogActivity} />}
-                {currentView === 'ai_chat' && <TeacherAiChat onClose={() => router.back()} />}
+                {currentView === 'ai_assistant' && <TeacherAiChat onClose={() => router.back()} />}
             </AnimatePresence>
         </div>
     );

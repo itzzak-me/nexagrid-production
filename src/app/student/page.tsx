@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense, useRef, useMemo } from "react";
-import dynamic from "next/dynamic"; // 1. LAZY LOADING
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/context/ToastContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -20,6 +20,7 @@ import {
 import {
     MOCK_STUDENTS, AI_KNOWLEDGE_BASE, EXAM_DATA, ATTENDANCE_HISTORY, FINANCIAL_DATA, PEER_DOUBTS
 } from "@/lib/data";
+import { askAi } from "../actions"; // IMPORT FREE AI SERVER ACTION
 
 // --- TYPES ---
 type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string; isStreaming?: boolean };
@@ -48,24 +49,14 @@ const RichText = React.memo(({ content }: { content: string }) => {
         <div className="space-y-2 leading-relaxed text-sm">
             {parts.map((part, i) => {
                 if (part.startsWith("```")) {
-                    return (
-                        <pre key={i} className="bg-black/30 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-white/10 text-emerald-400 my-2">
-                            {part.replace(/```/g, "").trim()}
-                        </pre>
-                    );
+                    return <pre key={i} className="bg-black/30 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-white/10 text-emerald-400 my-2">{part.replace(/```/g, "").trim()}</pre>;
                 }
                 return (
                     <div key={i} className="whitespace-pre-wrap">
                         {part.split(/(\*\*.*?\*\*|\n- .*|### .*)/g).map((chunk, j) => {
-                            if (chunk.startsWith("**") && chunk.endsWith("**")) {
-                                return <strong key={j} className="text-white font-bold">{chunk.slice(2, -2)}</strong>;
-                            }
-                            if (chunk.startsWith("\n- ")) {
-                                return <div key={j} className="flex gap-2 my-1 pl-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" /><span className="text-neutral-300">{chunk.trim().substring(1)}</span></div>;
-                            }
-                            if (chunk.startsWith("###")) {
-                                return <h3 key={j} className="text-lg font-bold text-emerald-400 mt-4 mb-2">{chunk.replace(/###/g, "").trim()}</h3>;
-                            }
+                            if (chunk.startsWith("**")) return <strong key={j} className="text-white font-bold">{chunk.slice(2, -2)}</strong>;
+                            if (chunk.startsWith("\n- ")) return <div key={j} className="flex gap-2 my-1 pl-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" /><span className="text-neutral-300">{chunk.trim().substring(1)}</span></div>;
+                            if (chunk.startsWith("###")) return <h3 key={j} className="text-lg font-bold text-emerald-400 mt-4 mb-2">{chunk.replace(/###/g, "").trim()}</h3>;
                             return chunk;
                         })}
                     </div>
@@ -76,30 +67,19 @@ const RichText = React.memo(({ content }: { content: string }) => {
 });
 RichText.displayName = 'RichText';
 
-// --- COMPONENT: TOP NAVIGATION ---
+// --- TOP NAV ---
 const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void }) => {
     const { schoolName } = useConfig();
+    const router = useRouter();
     const { addToast } = useToast();
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const router = useRouter();
 
     const notifications = useMemo(() => [
         { id: 1, title: "Fee Due", desc: "Physics Module Fee Pending", time: "2h ago", icon: Wallet, color: "text-rose-500 bg-rose-500/10" },
         { id: 2, title: "Assignment", desc: "Chemistry Lab Record", time: "5h ago", icon: FileText, color: "text-blue-500 bg-blue-500/10" },
-        { id: 3, title: "System", desc: "Nexa AI v4.0 (Quantum) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
+        { id: 3, title: "System", desc: "Nexa AI v4.2 (NexGen OS) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
     ], []);
-
-    useEffect(() => {
-        const close = () => { setIsNotifOpen(false); setIsProfileOpen(false); };
-        window.addEventListener('click', close);
-        return () => window.removeEventListener('click', close);
-    }, []);
-
-    const handleLogout = () => {
-        addToast("Scholar Session Terminated", "info");
-        setTimeout(() => router.push('/'), 800);
-    };
 
     return (
         <header className="fixed top-0 left-0 right-0 h-24 flex items-center justify-between px-6 z-40 pointer-events-none transform-gpu">
@@ -108,52 +88,28 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
                 <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/20"><Award className="text-white" size={20} /></div>
                 <div><span className="font-bold text-sm tracking-tight block text-white">{schoolName}</span><span className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest">Scholar Portal</span></div>
             </div>
-            <div className="relative z-10 flex items-center gap-3 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="hidden sm:flex items-center gap-3 px-4 py-2 rounded-full bg-white/[0.03] border border-white/[0.05] backdrop-blur-md mr-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10B981]" />
-                    <span className="text-[10px] font-mono font-bold text-neutral-400">ONLINE</span>
-                </div>
+            <div className="relative z-10 flex items-center gap-3 pointer-events-auto">
+                <button onClick={() => { setIsNotifOpen(!isNotifOpen); setIsProfileOpen(false); }} className="p-3 rounded-full border border-white/[0.05] bg-white/[0.03] text-neutral-400 relative"><Bell size={18} />{notifications.length > 0 && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#0A0A0A]" />}</button>
+                <button onClick={() => { setIsProfileOpen(!isProfileOpen); setIsNotifOpen(false); }} className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 border border-white/10 ml-2" />
 
-                <div className="relative">
-                    <button onClick={() => { setIsNotifOpen(!isNotifOpen); setIsProfileOpen(false); }} className={`p-3 rounded-full border transition-colors relative ${isNotifOpen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/[0.03] border-white/[0.05] text-neutral-400 hover:text-white hover:bg-white/10'}`}>
-                        <Bell size={18} />
-                        {notifications.length > 0 && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#0A0A0A]" />}
-                    </button>
-                    <AnimatePresence>
-                        {isNotifOpen && (
-                            <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-3 w-80 bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-xl">
-                                <div className="px-4 py-3 border-b border-white/5 flex justify-between items-center"><span className="text-xs font-bold text-white">Alerts</span></div>
-                                <div className="max-h-64 overflow-y-auto p-2 space-y-1 no-scrollbar">
-                                    {notifications.map((n) => (
-                                        <div key={n.id} className="flex gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.color}`}><n.icon size={14} /></div>
-                                            <div><p className="text-xs font-bold text-neutral-200 group-hover:text-white">{n.title}</p><p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{n.desc}</p><p className="text-[9px] text-neutral-600 mt-1 font-mono">{n.time}</p></div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-                <div className="relative">
-                    <button onClick={() => { setIsProfileOpen(!isProfileOpen); setIsNotifOpen(false); }} className={`w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 border border-white/10 ml-2 transition-transform active:scale-95 ${isProfileOpen ? 'ring-2 ring-white/20' : ''}`} />
-                    <AnimatePresence>
-                        {isProfileOpen && (
-                            <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-full right-0 mt-3 w-56 bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 p-1.5 backdrop-blur-xl">
-                                <div className="px-3 py-2 mb-2 border-b border-white/5"><p className="text-sm font-bold text-white">Rohan Das</p><p className="text-[10px] text-neutral-500 font-mono">ID: ST-2026-01</p></div>
-                                <button onClick={() => { onViewChange('profile'); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-xs font-medium text-neutral-300 hover:text-white transition-colors"><User size={16} /> My Identity</button>
-                                <div className="h-px bg-white/5 my-1.5" />
-                                <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-rose-500/10 text-xs font-medium text-rose-500 transition-colors"><LogOut size={16} /> Logout System</button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+                <AnimatePresence>
+                    {isNotifOpen && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-full right-0 mt-3 w-80 bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl p-2 z-50">
+                            {notifications.map(n => <div key={n.id} className="flex gap-3 p-3 hover:bg-white/5 rounded-xl"><div className={`w-8 h-8 rounded-full flex items-center justify-center ${n.color}`}><n.icon size={14} /></div><div><p className="text-xs font-bold text-white">{n.title}</p><p className="text-[10px] text-neutral-500">{n.desc}</p></div></div>)}
+                        </motion.div>
+                    )}
+                    {isProfileOpen && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-full right-0 mt-3 w-56 bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl p-2 z-50">
+                            <button onClick={() => { addToast("Signed Out", "info"); router.push('/'); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-rose-500/10 text-xs font-medium text-rose-500"><LogOut size={16} /> Logout</button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </header>
     );
 };
 
-// --- COMPONENT: PEER FORUM ---
+// --- PEER FORUM ---
 const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, doubts: Doubt[], onVote: (id: number) => void, onPost: (q: string) => void }) => {
     useScrollLock();
     const [newQuestion, setNewQuestion] = useState("");
@@ -162,11 +118,7 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
     const handlePost = () => {
         if (!newQuestion.trim()) return;
         setIsPosting(true);
-        setTimeout(() => {
-            onPost(newQuestion);
-            setNewQuestion("");
-            setIsPosting(false);
-        }, 800);
+        setTimeout(() => { onPost(newQuestion); setNewQuestion(""); setIsPosting(false); }, 800);
     };
 
     return (
@@ -176,43 +128,22 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
                 <span className="font-mono text-xs uppercase tracking-[0.2em] text-amber-500">Hive Mind Grid</span>
                 <div className="w-10" />
             </div>
-
             <div className="flex-1 overflow-y-auto h-full w-full no-scrollbar">
                 <div className="p-6 max-w-2xl mx-auto w-full pb-20 space-y-6">
                     <div className="p-6 rounded-[2rem] bg-white/[0.02] border border-white/10 shadow-xl">
                         <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><HelpCircle size={16} className="text-amber-500" /> Ask the Hive Mind</h3>
                         <div className="relative">
-                            <textarea
-                                value={newQuestion}
-                                onChange={(e) => setNewQuestion(e.target.value)}
-                                placeholder="Type your question here..."
-                                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl p-4 pr-12 text-sm focus:border-amber-500 outline-none transition-all placeholder:text-neutral-600 resize-none min-h-[100px]"
-                            />
-                            <button onClick={handlePost} disabled={isPosting || !newQuestion.trim()} className="absolute bottom-3 right-3 p-2 bg-amber-500 text-black rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                                {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                            </button>
+                            <textarea value={newQuestion} onChange={(e) => setNewQuestion(e.target.value)} placeholder="Type your question here..." className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl p-4 pr-12 text-sm focus:border-amber-500 outline-none transition-all placeholder:text-neutral-600 resize-none min-h-[100px]" />
+                            <button onClick={handlePost} disabled={isPosting || !newQuestion.trim()} className="absolute bottom-3 right-3 p-2 bg-amber-500 text-black rounded-lg hover:bg-amber-400 transition-colors disabled:opacity-50">{isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}</button>
                         </div>
                     </div>
-
                     {doubts.map((doubt) => (
                         <div key={doubt.id} className="p-6 rounded-[2rem] bg-[#0A0A0A] border border-white/[0.05] hover:border-amber-500/30 transition-all duration-300 group shadow-lg">
                             <div className="flex justify-between items-start mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-900 border border-white/5 flex items-center justify-center text-sm font-bold text-neutral-400 font-mono">{doubt.student.charAt(0)}</div>
-                                    <div><p className="text-sm font-bold text-white group-hover:text-amber-100 transition-colors">{doubt.student}</p><p className="text-[10px] text-neutral-500 font-mono flex items-center gap-1"><Clock size={10} /> {doubt.time} • {doubt.class}</p></div>
-                                </div>
-                                <div className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 border backdrop-blur-md ${doubt.status === 'teacher_escalated' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.1)]' : doubt.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
-                                    {doubt.status === 'teacher_escalated' ? <AlertTriangle size={10} /> : <Activity size={10} />}
-                                    {doubt.status === 'teacher_escalated' ? 'Escalated' : doubt.status.replace('_', ' ')}
-                                </div>
+                                <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-900 border border-white/5 flex items-center justify-center text-sm font-bold text-neutral-400 font-mono">{doubt.student.charAt(0)}</div><div><p className="text-sm font-bold text-white group-hover:text-amber-100 transition-colors">{doubt.student}</p><p className="text-[10px] text-neutral-500 font-mono flex items-center gap-1"><Clock size={10} /> {doubt.time} • {doubt.class}</p></div></div>
+                                <div className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${doubt.status === 'teacher_escalated' ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}>{doubt.status === 'teacher_escalated' ? 'Escalated' : 'Peer Review'}</div>
                             </div>
-                            <div className="pl-[52px]">
-                                <p className="text-sm text-neutral-300 leading-relaxed mb-6 font-medium">"{doubt.query}"</p>
-                                <div className="flex items-center justify-between border-t border-white/5 pt-5">
-                                    <button onClick={() => onVote(doubt.id)} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all group/btn active:scale-95"><Zap size={16} className="text-neutral-500 group-hover/btn:text-emerald-500 transition-colors" /><span className="text-xs font-bold text-neutral-400 group-hover/btn:text-white">{doubt.votes} Boosts</span></button>
-                                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-500/20 transition-colors"><MessageCircle size={16} /> <span>{doubt.responses} Solutions</span></button>
-                                </div>
-                            </div>
+                            <div className="pl-[52px]"><p className="text-sm text-neutral-300 leading-relaxed mb-6 font-medium">"{doubt.query}"</p><div className="flex items-center justify-between border-t border-white/5 pt-5"><button onClick={() => onVote(doubt.id)} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.02] border border-white/10 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all group/btn active:scale-95"><Zap size={16} className="text-neutral-500 group-hover/btn:text-emerald-500 transition-colors" /><span className="text-xs font-bold text-neutral-400 group-hover/btn:text-white">{doubt.votes} Boosts</span></button><button className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-500/20 transition-colors"><MessageCircle size={16} /> <span>{doubt.responses} Solutions</span></button></div></div>
                         </div>
                     ))}
                 </div>
@@ -221,7 +152,7 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
     );
 };
 
-// --- COMPONENT: NEXA AI CHAT ---
+// --- AI CHAT (USING FREE SERVER ACTION - STUDENT MODE) ---
 const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: string) => void }) => {
     useScrollLock();
     const { addToast } = useToast();
@@ -280,83 +211,55 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
         setIsStreaming(true);
 
         try {
-            if (typeof window !== 'undefined' && window.puter) {
-                const systemPrompt = `ROLE: Nexa AI (Tutor). SUBJECT: ${activeSubject}. FORMAT: Markdown.`;
-                const responseStream = await window.puter.ai.chat(`${systemPrompt}\nUser: ${textToSend}`, attachedImage ? attachedImage : { stream: true, model: 'gemini-3-flash-preview' }, attachedImage ? { stream: true, model: 'gemini-3-flash-preview' } : undefined);
+            // --- CALL THE FREE SERVER ACTION WITH 'student' ROLE ---
+            const prompt = `Subject: ${activeSubject}. Question: ${textToSend}`;
+            const responseText = await askAi(prompt, attachedImage || undefined, 'student'); // <--- Student Mode
 
-                let fullText = "";
-                for await (const part of responseStream) {
-                    fullText += part?.text || "";
-                    setHistory(prev => ({
-                        ...prev,
-                        [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: fullText } : c)
-                    }));
-                }
+            setHistory(prev => ({
+                ...prev,
+                [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: responseText, isStreaming: false } : c)
+            }));
 
-                setHistory(prev => ({
-                    ...prev,
-                    [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, isStreaming: false } : c)
-                }));
-            } else { throw new Error("Puter Offline"); }
         } catch (error) {
             setHistory(prev => ({
                 ...prev,
-                [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: "Connection Failed.", isStreaming: false } : c)
+                [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: "Connection Failed. Try again.", isStreaming: false } : c)
             }));
-        } finally { setIsStreaming(false); }
+        } finally {
+            setIsStreaming(false);
+        }
     };
 
     return (
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="fixed inset-0 z-50 bg-[#050505] flex flex-col text-white h-screen w-full">
             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#050505]/90 backdrop-blur-xl">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-[0_0_30px_rgba(79,70,229,0.3)] relative">
-                        <Sparkles size={24} fill="white" />
-                        {isStreaming && <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full animate-ping" />}
-                    </div>
-                    <div><h2 className="font-bold text-xl tracking-tight">Nexa AI</h2><p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">Quantum Core v4.0</p></div>
-                </div>
+                <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-[0_0_30px_rgba(79,70,229,0.3)] relative"><Sparkles size={24} fill="white" />{isStreaming && <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full animate-ping" />}</div><div><h2 className="font-bold text-xl tracking-tight">Nexa AI</h2><p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">Quick Solver v4.2</p></div></div>
                 <button onClick={onClose} className="p-3 rounded-full hover:bg-white/5 transition-colors"><X size={20} /></button>
             </div>
             <div className="flex-1 overflow-y-auto h-full w-full no-scrollbar">
                 <div className="p-6 max-w-3xl mx-auto w-full pb-36">
                     {!activeSubject ? (
-                        <div className="space-y-6 mt-8">
-                            <h3 className="text-xl font-bold text-white text-center mb-8">Select Knowledge Module</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {Object.keys(history).map(s => (
-                                    <button key={s} onClick={() => setActiveSubject(s)} className="p-8 border border-white/5 rounded-[2rem] text-left bg-white/[0.02] hover:bg-indigo-600 hover:border-indigo-500 hover:text-white transition-all group duration-300">
-                                        <h3 className="font-bold text-xl mb-1">{s}</h3><p className="text-xs text-neutral-500 group-hover:text-white/80 font-mono uppercase tracking-wider">Initialize</p>
-                                    </button>
-                                ))}
-                            </div>
+                        <div className="space-y-6 mt-8 text-center">
+                            <h3 className="text-xl font-bold text-white">Select Knowledge Module</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">{Object.keys(history).map(s => (<button key={s} onClick={() => setActiveSubject(s)} className="p-8 border border-white/5 rounded-[2rem] text-left bg-white/[0.02] hover:bg-indigo-600 transition-all"><h3 className="font-bold text-xl mb-1">{s}</h3><p className="text-xs text-neutral-500 uppercase tracking-wider">Initialize</p></button>))}</div>
                         </div>
                     ) : (
                         <div className="space-y-8 flex flex-col">
                             {history[activeSubject]?.map((chat) => (
                                 <div key={chat.id} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <div className="flex justify-end flex-col items-end">
-                                        {chat.image && (
-                                            <div className="relative group mb-2">
-                                                <img src={chat.image} alt="Upload" className="w-48 h-auto rounded-2xl border border-white/10 object-cover shadow-lg" />
-                                            </div>
-                                        )}
+                                        {chat.image && <div className="relative group mb-2"><img src={chat.image} alt="Upload" className="w-48 h-auto rounded-2xl border border-white/10 object-cover shadow-lg" /></div>}
                                         <div className="bg-white text-black px-6 py-4 rounded-[1.5rem] rounded-tr-sm text-sm font-medium max-w-[85%] shadow-lg">{chat.query}</div>
                                     </div>
                                     <div className="flex justify-start items-end gap-3">
                                         <div className="flex-1 bg-white/[0.05] border border-white/5 px-6 py-4 rounded-[1.5rem] rounded-tl-sm text-sm text-neutral-300 max-w-[95%] shadow-sm">
                                             {chat.response ? <RichText content={chat.response} /> : <div className="flex items-center gap-2 text-indigo-400"><Loader2 size={14} className="animate-spin" /><span>Neural Processing...</span></div>}
-                                            {chat.role === 'ai' && !chat.isStreaming && (
-                                                <div className="mt-4 pt-4 border-t border-white/5 flex gap-2">
-                                                    <span className="text-[10px] text-neutral-500 mr-auto flex items-center gap-1"><Bot size={10} /> AI Tutor</span>
-                                                    <button onClick={() => onEscalate(chat.query)} className="text-[10px] font-bold text-amber-500 hover:text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 flex items-center gap-1 transition-colors"><HelpCircle size={10} /> Not Clear? Ask Peers</button>
-                                                </div>
-                                            )}
+                                            {chat.role === 'ai' && !chat.isStreaming && <div className="mt-4 pt-4 border-t border-white/5 flex gap-2"><span className="text-[10px] text-neutral-500 mr-auto flex items-center gap-1"><Bot size={10} /> AI Tutor</span><button onClick={() => onEscalate(chat.query)} className="text-[10px] font-bold text-amber-500 hover:text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 flex items-center gap-1 transition-colors"><HelpCircle size={10} /> Not Clear? Ask Peers</button></div>}
                                         </div>
                                     </div>
                                 </div>
                             ))}
-                            <div className="pb-4 flex justify-center"><button onClick={() => setActiveSubject(null)} className="text-xs text-neutral-500 flex items-center gap-2 hover:text-white transition-colors uppercase tracking-widest font-bold bg-white/5 px-4 py-2 rounded-full"><ArrowRight className="rotate-180" size={12} /> Modules</button></div>
+                            <div className="pb-4 flex justify-center"><button onClick={() => setActiveSubject(null)} className="text-xs text-neutral-500 bg-white/5 px-4 py-2 rounded-full hover:text-white transition-colors">Change Module</button></div>
                         </div>
                     )}
                     <div ref={messagesEndRef} />
@@ -365,27 +268,10 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
             {activeSubject && (
                 <div className="p-6 bg-[#050505]/80 backdrop-blur-xl border-t border-white/5 absolute bottom-0 left-0 right-0">
                     <div className="relative max-w-3xl mx-auto flex flex-col gap-3">
-                        {!input && !attachedImage && (
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                                {["Explain this concept", "Create a Quiz", "Summarize Notes"].map(q => (
-                                    <button key={q} onClick={() => handleSend(q)} className="whitespace-nowrap px-4 py-1.5 rounded-full bg-white/5 border border-white/5 text-[10px] hover:bg-white/10 transition-colors text-neutral-400 hover:text-white">{q}</button>
-                                ))}
-                            </div>
-                        )}
-                        {attachedImage && (
-                            <div className="flex items-center gap-3 bg-white/10 p-2 rounded-xl w-fit pr-4 animate-in slide-in-from-bottom-2">
-                                <img src={attachedImage} alt="Preview" className="w-10 h-10 rounded-lg object-cover" />
-                                <span className="text-xs text-neutral-300">Image Attached</span>
-                                <button onClick={() => setAttachedImage(null)} className="p-1 rounded-full bg-white/10 hover:bg-white/20"><XCircle size={14} /></button>
-                            </div>
-                        )}
+                        {!input && !attachedImage && <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">{["Explain this", "Quiz me", "Summarize"].map(q => <button key={q} onClick={() => handleSend(q)} className="whitespace-nowrap px-4 py-1.5 rounded-full bg-white/5 border border-white/5 text-[10px] hover:bg-white/10 transition-colors text-neutral-400 hover:text-white">{q}</button>)}</div>}
+                        {attachedImage && <div className="flex items-center gap-3 bg-white/10 p-2 rounded-xl w-fit pr-4 animate-in slide-in-from-bottom-2"><img src={attachedImage} alt="Preview" className="w-10 h-10 rounded-lg object-cover" /><span className="text-xs text-neutral-300">Image Attached</span><button onClick={() => setAttachedImage(null)} className="p-1 rounded-full bg-white/10 hover:bg-white/20"><XCircle size={14} /></button></div>}
                         <div className="relative flex items-center gap-2">
-                            <div className="relative flex-1">
-                                <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={isListening ? "Listening..." : "Ask anything..."} className={`w-full bg-[#111] border ${isListening ? 'border-red-500/50' : 'border-white/10'} rounded-full py-4 pl-12 pr-12 text-sm focus:border-indigo-500 outline-none transition-all placeholder:text-neutral-700`} disabled={isStreaming} />
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
-                                <button onClick={() => fileInputRef.current?.click()} className="absolute left-2 top-2 p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"><ImageIcon size={20} /></button>
-                                <button onClick={handleMic} className={`absolute right-2 top-2 p-2 rounded-full transition-colors ${isListening ? 'text-red-500 bg-red-500/10 animate-pulse' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>{isListening ? <StopCircle size={20} /> : <Mic size={20} />}</button>
-                            </div>
+                            <div className="relative flex-1"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder={isListening ? "Listening..." : "Ask anything..."} className="w-full bg-[#111] border border-white/10 rounded-full py-4 pl-12 pr-12 text-sm focus:border-indigo-500 outline-none transition-all placeholder:text-neutral-700" disabled={isStreaming} /><input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} /><button onClick={() => fileInputRef.current?.click()} className="absolute left-2 top-2 p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-full transition-colors"><ImageIcon size={20} /></button><button onClick={handleMic} className={`absolute right-2 top-2 p-2 rounded-full transition-colors ${isListening ? 'text-red-500 bg-red-500/10 animate-pulse' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>{isListening ? <StopCircle size={20} /> : <Mic size={20} />}</button></div>
                             <button onClick={() => handleSend()} disabled={isStreaming} className="p-4 bg-indigo-600 rounded-full hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed">{isStreaming ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}</button>
                         </div>
                     </div>

@@ -1,6 +1,6 @@
 {
-    "name": "NexGen OS",
-    "short_name": "NexGen",
+    "name": "NexaGrid OS",
+    "short_name": "NexaGrid",
     "description": "Total Intelligence Engine for Education",
     "start_url": "/",
     "display": "standalone",

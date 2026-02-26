@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense, useRef, useMemo } from "react";
-import dynamic from "next/dynamic"; // 1. LAZY LOADING
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/context/ToastContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -22,10 +22,6 @@ import { ADMIN_STATS, REVENUE_DATA, CRM_LEADS, SYSTEM_LOGS, MOCK_CLASS_LIST, TEA
 
 // --- LAZY LOAD COMPONENTS ---
 const LoadingSpinner = () => <div className="flex h-full w-full items-center justify-center text-amber-500"><Loader2 className="animate-spin" /></div>;
-
-// In a real multi-file setup, these would be import(...) from actual files. 
-// Since we are in a single-file edit context, we will optimize the RENDER LOGIC instead of code-splitting 
-// to keep the file valid, but we simulate the architecture for future scalability.
 
 // --- SCROLL LOCK HOOK ---
 const useScrollLock = () => {
@@ -838,6 +834,18 @@ const AdminDashboardContent = () => {
                     </div>
                     <div className="h-full"><SystemLogs /></div>
                 </div>
+
+                {/* --- BRANDED FOOTER --- */}
+                <footer className="pt-8 pb-8 flex flex-col sm:flex-row justify-between items-center gap-6 opacity-40 text-[10px] font-mono uppercase tracking-[0.2em] mt-10 border-t border-white/5">
+                    <div className="flex items-center gap-8">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            <span>Link Encrypted</span>
+                        </div>
+                        <span>NexaGrid Director v1.0</span>
+                    </div>
+                    <span className="font-bold text-neutral-500 tracking-wider">POWERED BY NEXGEN OPERATING SYSTEMS INDIA</span>
+                </footer>
             </main>
 
             {/* MODALS */}

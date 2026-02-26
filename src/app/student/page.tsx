@@ -20,7 +20,7 @@ import {
 import {
     MOCK_STUDENTS, AI_KNOWLEDGE_BASE, EXAM_DATA, ATTENDANCE_HISTORY, FINANCIAL_DATA, PEER_DOUBTS
 } from "@/lib/data";
-import { askAi } from "../actions"; // IMPORT FREE AI SERVER ACTION
+import { askAi } from "../actions";
 
 // --- TYPES ---
 type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string; isStreaming?: boolean };
@@ -29,7 +29,6 @@ type Doubt = { id: number; student: string; class: string; query: string; status
 
 declare global {
     interface Window {
-        puter: any;
         webkitSpeechRecognition: any;
     }
 }
@@ -67,7 +66,7 @@ const RichText = React.memo(({ content }: { content: string }) => {
 });
 RichText.displayName = 'RichText';
 
-// --- TOP NAV ---
+// --- TOP NAV (Contains Bell Icon for Broadcasts) ---
 const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void }) => {
     const { schoolName } = useConfig();
     const router = useRouter();
@@ -78,7 +77,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     const notifications = useMemo(() => [
         { id: 1, title: "Fee Due", desc: "Physics Module Fee Pending", time: "2h ago", icon: Wallet, color: "text-rose-500 bg-rose-500/10" },
         { id: 2, title: "Assignment", desc: "Chemistry Lab Record", time: "5h ago", icon: FileText, color: "text-blue-500 bg-blue-500/10" },
-        { id: 3, title: "System", desc: "Nexa AI v4.2 (NexGen OS) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
+        { id: 3, title: "System", desc: "Nexa AI v4.2 (NexaGrid) Live", time: "1d ago", icon: Sparkles, color: "text-emerald-500 bg-emerald-500/10" }
     ], []);
 
     return (
@@ -89,6 +88,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
                 <div><span className="font-bold text-sm tracking-tight block text-white">{schoolName}</span><span className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest">Scholar Portal</span></div>
             </div>
             <div className="relative z-10 flex items-center gap-3 pointer-events-auto">
+                {/* Bell Icon for Broadcasts */}
                 <button onClick={() => { setIsNotifOpen(!isNotifOpen); setIsProfileOpen(false); }} className="p-3 rounded-full border border-white/[0.05] bg-white/[0.03] text-neutral-400 relative"><Bell size={18} />{notifications.length > 0 && <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#0A0A0A]" />}</button>
                 <button onClick={() => { setIsProfileOpen(!isProfileOpen); setIsNotifOpen(false); }} className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 border border-white/10 ml-2" />
 
@@ -152,7 +152,7 @@ const PeerForum = ({ onClose, doubts, onVote, onPost }: { onClose: () => void, d
     );
 };
 
-// --- AI CHAT (USING FREE SERVER ACTION - STUDENT MODE) ---
+// --- AI CHAT ---
 const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: string) => void }) => {
     useScrollLock();
     const { addToast } = useToast();
@@ -211,15 +211,11 @@ const AiChat = ({ onClose, onEscalate }: { onClose: () => void, onEscalate: (q: 
         setIsStreaming(true);
 
         try {
-            // --- CALL THE FREE SERVER ACTION WITH 'student' ROLE ---
-            const prompt = `Subject: ${activeSubject}. Question: ${textToSend}`;
-            const responseText = await askAi(prompt, attachedImage || undefined, 'student'); // <--- Student Mode
-
+            const responseText = await askAi(textToSend, attachedImage || undefined, 'student');
             setHistory(prev => ({
                 ...prev,
                 [activeSubject!]: prev[activeSubject!].map(c => c.id === newChat.id ? { ...c, response: responseText, isStreaming: false } : c)
             }));
-
         } catch (error) {
             setHistory(prev => ({
                 ...prev,
@@ -303,7 +299,7 @@ const StudentProfile = ({ onClose }: { onClose: () => void }) => {
     const student = MOCK_STUDENTS[0];
     const { themeColor } = useConfig();
     const activeColor = `rgb(${themeColor})`;
-    const [activeTab, setActiveTab] = useState<'academic' | 'financial'>('academic'); // NEW: Tabs
+    const [activeTab, setActiveTab] = useState<'academic' | 'financial'>('academic');
     const [selectedExam, setSelectedExam] = useState(Object.keys(EXAM_DATA)[0]);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const { addToast } = useToast();
@@ -337,7 +333,7 @@ const StudentProfile = ({ onClose }: { onClose: () => void }) => {
                             <span className="text-xs font-bold text-neutral-300 group-hover:text-red-400">Change Password</span>
                         </button>
 
-                        {/* NEW: TABS */}
+                        {/* TABS */}
                         <div className="flex bg-white/5 p-1 rounded-2xl w-full max-w-sm">
                             <button onClick={() => setActiveTab('academic')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'academic' ? 'bg-white text-black shadow-lg' : 'text-neutral-400 hover:text-white'}`}>Academic</button>
                             <button onClick={() => setActiveTab('financial')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'financial' ? 'bg-white text-black shadow-lg' : 'text-neutral-400 hover:text-white'}`}>Financial</button>
@@ -376,7 +372,7 @@ const StudentProfile = ({ onClose }: { onClose: () => void }) => {
         </motion.div>
     );
 };
-const SmartBag = () => { const { addToast } = useToast(); const [items, setItems] = useState([{ id: 1, subject: "Physics", item: "H.C. Verma Vol 1", color: "bg-blue-500", checked: false }, { id: 2, subject: "Chemistry", item: "Organic Notes", color: "bg-emerald-500", checked: false }, { id: 3, subject: "Mathematics", item: "R.D. Sharma", color: "bg-red-500", checked: false }, { id: 4, subject: "English", item: "Flamingo Reader", color: "bg-amber-500", checked: false },]); const toggleItem = (id: number) => { setItems(prev => prev.map(item => item.id === id ? { ...item, checked: !item.checked } : item)); addToast("Pack Status Updated", "info"); }; return (<div className="w-full overflow-x-auto pb-6 pt-2 no-scrollbar"><div className="flex gap-5 min-w-max px-1">{items.map((item) => (<motion.div key={item.id} onClick={() => toggleItem(item.id)} whileHover={{ y: -5 }} whileTap={{ scale: 0.95 }} className={`w-44 p-6 rounded-[1.8rem] border border-white/[0.05] bg-white/[0.02] backdrop-blur-sm cursor-pointer transition-all ${item.checked ? "opacity-40 grayscale border-dashed" : "hover:border-white/20 hover:bg-white/[0.05] shadow-lg"}`}><div className={`w-2.5 h-2.5 rounded-full ${item.color} mb-4 shadow-[0_0_12px_currentColor]`} /><h4 className="font-bold text-white text-sm mb-2">{item.subject}</h4><p className="text-[10px] text-neutral-500 font-mono truncate uppercase tracking-wider">{item.item}</p></motion.div>))}</div></div>); };
+
 const AttendanceCalendar = () => { const daysInMonth = 31; const startDayOffset = 3; const getStatusStyles = (day: number) => { const dateStr = `2026-01-${day.toString().padStart(2, '0')}`; const record = ATTENDANCE_HISTORY["2026-01"]?.find(r => r.date === dateStr); if (record?.status === "present") return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"; if (record?.status === "holiday") return "bg-blue-500/20 text-blue-400 border-blue-500/30"; if (record?.status === "leave") return "bg-orange-500/20 text-orange-400 border-orange-500/30"; if (record?.status === "absent") return "bg-red-500/20 text-red-400 border-red-500/30"; return "bg-white/[0.02] text-neutral-600 border-white/[0.05] hover:bg-white/[0.05]"; }; return (<div className="mt-8 p-6 bg-white/[0.02] border border-white/[0.05] rounded-[2rem] relative overflow-hidden backdrop-blur-sm"><div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4"><div><h3 className="text-white font-bold text-lg flex items-center gap-2"><div className="p-2 bg-blue-500/10 rounded-lg text-blue-400"><CalendarIcon size={18} /></div>Attendance Matrix</h3><p className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mt-2 ml-1">Live Sync • Jan 2026</p></div><div className="flex gap-2 bg-black/20 p-1.5 rounded-xl border border-white/5">{[{ l: "Holiday", c: "bg-blue-500" }, { l: "Leave", c: "bg-orange-500" }, { l: "Absent", c: "bg-red-500" }].map(s => (<div key={s.l} className="px-3 py-1.5 rounded-lg flex items-center gap-2"><div className={`w-1.5 h-1.5 rounded-full ${s.c} shadow-[0_0_8px_currentColor]`} /><span className="text-[10px] font-bold uppercase text-neutral-400">{s.l}</span></div>))}</div></div><div className="grid grid-cols-7 gap-1 sm:gap-2">{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (<div key={i} className="text-center text-[10px] font-bold text-neutral-600 py-3 uppercase tracking-wider">{d}</div>))}{Array.from({ length: startDayOffset }).map((_, i) => <div key={`off-${i}`} />)}{Array.from({ length: daysInMonth }).map((_, i) => (<motion.div whileHover={{ scale: 1.05 }} key={i} className={`aspect-square rounded-xl flex items-center justify-center text-xs border transition-all cursor-default ${getStatusStyles(i + 1)}`}>{i + 1}</motion.div>))}</div></div>); };
 
 // --- MAIN DASHBOARD CONTENT ---
@@ -451,8 +447,6 @@ const DashboardContent = () => {
                     </div>
                 </section>
 
-                <SmartBag />
-
                 <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     {/* 1. NEXA AI */}
                     <button onClick={() => router.push(pathname + '?view=genius')} className="md:col-span-2 p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] text-left hover:bg-white/[0.04] hover:border-white/10 transition-all group relative overflow-hidden backdrop-blur-sm transform-gpu">
@@ -490,8 +484,16 @@ const DashboardContent = () => {
                     </button>
                 </section>
 
-                <footer className="pt-20 pb-8 flex flex-col sm:flex-row justify-between items-center gap-6 opacity-30 text-[10px] font-mono uppercase tracking-[0.2em]">
-                    <div className="flex items-center gap-8"><div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /><span>Link Encrypted</span></div><span>Kernel v16.1.1</span></div><span>NexGen OS Total Intelligence</span>
+                {/* --- BRANDED FOOTER --- */}
+                <footer className="pt-20 pb-8 flex flex-col sm:flex-row justify-between items-center gap-6 opacity-40 text-[10px] font-mono uppercase tracking-[0.2em]">
+                    <div className="flex items-center gap-8">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>Link Encrypted</span>
+                        </div>
+                        <span>NexaGrid Core v1.0</span>
+                    </div>
+                    <span className="font-bold text-neutral-500 tracking-wider">POWERED BY NEXGEN OPERATING SYSTEMS INDIA</span>
                 </footer>
             </main>
 
@@ -503,7 +505,6 @@ const DashboardContent = () => {
                 {currentView === 'genius' && <AiChat onClose={() => router.back()} onEscalate={handleEscalation} />}
                 {currentView === 'profile' && <StudentProfile onClose={() => router.back()} />}
                 {currentView === 'leave' && <LeaveRequestModal onClose={() => router.back()} />}
-                {/* Removed FinancialDashboard from root because it's now inside Profile */}
                 {currentView === 'peer_forum' && <PeerForum onClose={() => router.back()} doubts={peerDoubts} onVote={handleVote} onPost={handlePostDoubt} />}
             </AnimatePresence>
         </div>

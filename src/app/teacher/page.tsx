@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense, useRef, useMemo } from "react";
-import dynamic from "next/dynamic"; // 1. LAZY LOADING
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/context/ToastContext";
 import { useConfig } from "@/context/ConfigContext";
@@ -15,26 +15,13 @@ import {
     LogOut, Lock, Loader2, HelpCircle, MessageCircle, Send, Image as ImageIcon, XCircle, Mic, StopCircle
 } from "lucide-react";
 import { MOCK_CLASS_LIST, PENDING_LEAVES, TEACHER_DIRECTORY, TEACHER_SCHEDULE, PEER_DOUBTS } from "@/lib/data";
-
-// --- LAZY LOAD HEAVY MODULES ---
-// Fallback spinner for lazy components
-const LoadingSpinner = () => <div className="flex h-full w-full items-center justify-center text-indigo-500"><Loader2 className="animate-spin" /></div>;
-
-// Using inline components for dynamic imports to keep everything in one file structure if preferred, 
-// BUT for true lazy loading in Next.js, these should ideally be separate files.
-// However, since we are in a single-file edit mode, I will use a conditional render strategy 
-// that mimics lazy loading behavior for the logic inside the components, 
-// or simpler: just keep them as components but ensure the heavy libs (like Recharts if used inside) are dynamic.
-// 
-// For now, I will keep the components defined in this file to ensure it runs without creating 5 new files,
-// but I will optimize the rendering logic.
+import { askAi } from "../actions";
 
 // --- TYPES ---
 type ChatSession = { id: string; query: string; response: string; date: string; role: 'user' | 'ai'; image?: string; isStreaming?: boolean };
 
 declare global {
     interface Window {
-        puter: any;
         webkitSpeechRecognition: any;
     }
 }
@@ -43,17 +30,11 @@ declare global {
 const useScrollLock = () => {
     useEffect(() => {
         document.body.style.overflow = "hidden";
-        // Mobile Safari fix: prevent touchmove on body
-        // const preventDefault = (e: Event) => e.preventDefault();
-        // document.body.addEventListener('touchmove', preventDefault, { passive: false });
-        return () => {
-            document.body.style.overflow = "auto";
-            // document.body.removeEventListener('touchmove', preventDefault);
-        };
+        return () => { document.body.style.overflow = "auto"; };
     }, []);
 };
 
-// --- MEMOIZED RICH TEXT PARSER (Performance) ---
+// --- MEMOIZED RICH TEXT PARSER ---
 const RichText = React.memo(({ content }: { content: string }) => {
     const parts = useMemo(() => content.split(/(```[\s\S]*?```)/g), [content]);
     return (
@@ -100,7 +81,7 @@ const TopNavigation = ({ onViewChange }: { onViewChange: (view: string) => void 
     const notifications = useMemo(() => [
         { id: 1, title: "Leave Request", desc: "Kabir Mehta (10-A) applied for sick leave.", time: "10m ago", icon: CalendarIcon, color: "text-orange-500 bg-orange-500/10" },
         { id: 2, title: "Doubt Escalation", desc: "5 unresolved doubts in Physics Hive.", time: "30m ago", icon: HelpCircle, color: "text-amber-500 bg-amber-500/10" },
-        { id: 3, title: "Admin Alert", desc: "Submit monthly attendance report.", time: "5h ago", icon: Shield, color: "text-rose-500 bg-rose-500/10" }
+        { id: 3, title: "System", desc: "Nexa AI v4.2 (NexaGrid) Live", time: "5h ago", icon: Shield, color: "text-rose-500 bg-rose-500/10" }
     ], []);
 
     useEffect(() => {
@@ -236,25 +217,13 @@ const TeacherAiChat = ({ onClose }: { onClose: () => void }) => {
         setIsStreaming(true);
 
         try {
-            if (typeof window !== 'undefined' && window.puter) {
-                const systemPrompt = `ROLE: Nexa AI (Faculty Assistant). 
-                TASK: Assist with lesson planning, creating quizzes, grading rubrics.
-                STYLE: Professional, Structured.
-                FORMAT: Use **bold**, ### Headers, and - lists.
-                ${attachedImage ? "IMAGE MODE: Analyze attached image." : ""}`;
+            // --- CALL SERVER ACTION WITH 'teacher' ROLE ---
+            const prompt = `User (Teacher): ${textToSend}. Context: Help with teaching/grading.`;
+            const responseText = await askAi(prompt, attachedImage || undefined, 'teacher');
 
-                const responseStream = await window.puter.ai.chat(`${systemPrompt}\nTeacher: ${textToSend}`, attachedImage ? attachedImage : { stream: true, model: 'gemini-3-flash-preview' }, attachedImage ? { stream: true, model: 'gemini-3-flash-preview' } : undefined);
-
-                let fullText = "";
-                for await (const part of responseStream) {
-                    fullText += part?.text || "";
-                    setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, response: fullText } : c));
-                }
-
-                setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, isStreaming: false } : c));
-            } else { throw new Error("Puter Offline"); }
+            setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, response: responseText, isStreaming: false } : c));
         } catch (error) {
-            setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, response: "Connection Failed.", isStreaming: false } : c));
+            setHistory(prev => prev.map(c => c.id === newChat.id ? { ...c, response: "Error: AI System Offline.", isStreaming: false } : c));
         } finally { setIsStreaming(false); }
     };
 
@@ -266,7 +235,7 @@ const TeacherAiChat = ({ onClose }: { onClose: () => void }) => {
                         <Sparkles size={24} className="text-black" />
                         {isStreaming && <span className="absolute -top-1 -right-1 w-3 h-3 bg-white rounded-full animate-ping" />}
                     </div>
-                    <div><h2 className="font-bold text-xl tracking-tight">Nexa Faculty</h2><p className="text-[10px] text-amber-500 font-mono tracking-widest uppercase">Assistant v4.0</p></div>
+                    <div><h2 className="font-bold text-xl tracking-tight">Nexa Faculty</h2><p className="text-[10px] text-amber-500 font-mono tracking-widest uppercase">Assistant v4.2</p></div>
                 </div>
                 <button onClick={onClose} className="p-3 rounded-full hover:bg-white/5 transition-colors"><X size={20} /></button>
             </div>
@@ -337,27 +306,6 @@ const TeacherAiChat = ({ onClose }: { onClose: () => void }) => {
         </motion.div>
     );
 };
-
-// --- COMPONENT: TEACHER SCHEDULE CARD ---
-const TeacherSchedule = () => (
-    <div className="p-8 rounded-[2.5rem] bg-white/[0.02] border border-white/[0.05] h-full transform-gpu">
-        <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><CalendarIcon size={20} className="text-amber-500" /> Today's Schedule</h3>
-        <div className="space-y-4">
-            {TEACHER_SCHEDULE.map((slot) => (
-                <div key={slot.id} className={`p-4 rounded-2xl border ${slot.status === 'live' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-white/5 border-white/5'} flex justify-between items-center group transition-colors`}>
-                    <div>
-                        <p className="text-xs font-bold text-neutral-400 mb-1">{slot.time}</p>
-                        <h4 className="text-sm font-bold text-white">{slot.class} • {slot.subject}</h4>
-                        <p className="text-[10px] text-neutral-500 mt-1">{slot.topic}</p>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${slot.status === 'live' ? 'bg-amber-500 text-black animate-pulse' : 'bg-white/10 text-neutral-400'}`}>
-                        {slot.status}
-                    </div>
-                </div>
-            ))}
-        </div>
-    </div>
-);
 
 // --- COMPONENT: ATTENDANCE REGISTER ---
 const AttendanceRegister = ({ onClose, classId, onLog }: { onClose: () => void, classId: string, onLog: (a: string, d: string) => void }) => {
@@ -778,29 +726,6 @@ const TeacherProfile = ({ onClose }: { onClose: () => void }) => {
     );
 };
 
-// --- COMPONENT: SCHEDULE LIST ---
-const ScheduleWidget = () => {
-    const { addToast } = useToast();
-    return (
-        <div className="bg-[#0A0A0A] border border-white/5 rounded-[3rem] p-10 h-full">
-            <div className="flex justify-between items-center mb-8">
-                <div><h3 className="text-lg font-bold text-white tracking-tight">Today's Schedule</h3><p className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mt-1">Jan 05, 2026</p></div>
-                <div className="p-2 bg-white/5 rounded-full"><Clock size={18} className="text-neutral-400" /></div>
-            </div>
-            <div className="space-y-4">
-                {TEACHER_SCHEDULE.map((item) => (
-                    <div key={item.id} onClick={() => addToast(`Opening Class ${item.class} Details`, "info")} className={`group flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer hover:scale-[1.02] ${item.status === 'live' ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-white/[0.02] border-white/[0.03] opacity-80 hover:opacity-100 hover:bg-white/[0.05]'}`}>
-                        <div className={`text-xs font-mono font-bold w-20 ${item.status === 'live' ? 'text-indigo-400' : 'text-neutral-500'}`}>{item.time.split('-')[0]}</div>
-                        <div className="flex-1"><h4 className={`text-sm font-bold ${item.status === 'live' ? 'text-white' : 'text-neutral-300'}`}>{item.subject}: {item.topic}</h4><p className="text-[10px] text-neutral-500 flex items-center gap-2 mt-1"><span className="px-2 py-0.5 rounded bg-white/5 text-neutral-400">{item.class}</span><span>• {item.room}</span></p></div>
-                        {item.status === 'live' && <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500 text-white text-[10px] font-bold uppercase tracking-wider animate-pulse"><div className="w-1.5 h-1.5 bg-white rounded-full" /> Live</div>}
-                        {item.status === 'completed' && <CheckCircle2 size={16} className="text-emerald-500" />}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
 // --- MAIN DASHBOARD CONTENT ---
 const TeacherDashboardContent = () => {
     const router = useRouter();
@@ -919,10 +844,8 @@ const TeacherDashboardContent = () => {
 
                 {/* BOTTOM SECTION */}
                 <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                    <div className="lg:col-span-2">
-                        <ScheduleWidget />
-                    </div>
-                    <div className="bg-[#0A0A0A] border border-white/5 rounded-[3rem] p-10 h-full">
+                    {/* Live Stream Section Expanded to Full Width */}
+                    <div className="lg:col-span-3 bg-[#0A0A0A] border border-white/5 rounded-[3rem] p-10 h-full">
                         <div className="flex items-center justify-between mb-8">
                             <h3 className="text-xs font-mono font-bold text-neutral-500 uppercase tracking-[0.2em]">Live Stream</h3>
                             <button onClick={() => addToast("Fetching full history...", "info")} className="text-indigo-400 text-xs font-bold hover:text-white transition-colors">VIEW ALL</button>
@@ -939,6 +862,18 @@ const TeacherDashboardContent = () => {
                         </div>
                     </div>
                 </section>
+
+                {/* --- BRANDED FOOTER --- */}
+                <footer className="pt-20 pb-8 flex flex-col sm:flex-row justify-between items-center gap-6 opacity-40 text-[10px] font-mono uppercase tracking-[0.2em]">
+                    <div className="flex items-center gap-8">
+                        <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>Link Encrypted</span>
+                        </div>
+                        <span>NexaGrid Faculty v1.0</span>
+                    </div>
+                    <span className="font-bold text-neutral-500 tracking-wider">POWERED BY NEXGEN OPERATING SYSTEMS INDIA</span>
+                </footer>
             </main>
 
             {/* MODALS */}

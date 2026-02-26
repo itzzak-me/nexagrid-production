@@ -12,7 +12,7 @@ const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
     const [themeColor, setThemeColor] = useState("16 185 129"); // Default Emerald
-    const schoolName = "NexGen High";
+    const schoolName = "NexaGrid";
 
     useEffect(() => {
         document.documentElement.style.setProperty("--primary-rgb", themeColor);

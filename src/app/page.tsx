@@ -99,22 +99,28 @@ export default function LoginPage() {
           >
             <Atom size={32} className="text-white" />
           </motion.div>
+
           <motion.h1
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className="text-4xl font-black tracking-tighter mb-2"
+            className="text-4xl font-black tracking-tighter mb-1"
           >
-            NexGen <span className="text-indigo-500">OS</span>
+            Nexa<span className="text-indigo-500">Grid</span>
           </motion.h1>
-          <motion.p
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+
+          {/* Aesthetic Brand Status Badge instead of a Tagline */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-sm text-neutral-500 font-mono"
+            className="flex items-center justify-center mt-3"
           >
-            Institutional Operating System v2.4
-          </motion.p>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[9px] font-mono font-bold text-emerald-500 tracking-widest uppercase">Grid Online</span>
+            </div>
+          </motion.div>
         </div>
 
         {/* LOGIN CARD */}
@@ -207,9 +213,14 @@ export default function LoginPage() {
         </motion.div>
 
         {/* Footer */}
-        <p className="text-center text-[10px] text-neutral-600 mt-12 font-mono">
-          SECURE CONNECTION • 256-BIT ENCRYPTION • NEXGEN CORP
-        </p>
+        <div className="text-center mt-12 space-y-2">
+          <p className="text-[10px] text-neutral-600 font-mono tracking-widest uppercase">
+            Secure Connection • 256-Bit Encryption
+          </p>
+          <p className="text-[10px] font-bold text-neutral-500 tracking-wider uppercase">
+            POWERED BY NEXGEN OPERATING SYSTEMS INDIA
+          </p>
+        </div>
       </main>
     </div>
   );

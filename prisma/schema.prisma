@@ -1,0 +1,401 @@
+// ==========================================
+// 🛡️ NEXAGRID CORE ARCHITECTURE - PRISMA SCHEMA
+// ==========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Required for Supabase connection pooling
+}
+
+// ------------------------------------------
+// 1. ENUMS (Postgres Native Enums for Strict Typing & Security)
+// ------------------------------------------
+enum Role {
+  SUPERADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum InstituteStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HOLIDAY
+  LEAVE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  BANK_TRANSFER
+}
+
+enum DoubtStatus {
+  PEER_REVIEW
+  ESCALATED
+  RESOLVED
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ------------------------------------------
+// 2. TENANT BOUNDARIES (SuperAdmin Level)
+// ------------------------------------------
+
+model Institute {
+  id        String          @id @default(uuid())
+  domain    String          @unique // e.g., scholars.nexagrid.in
+  name      String
+  status    InstituteStatus @default(ACTIVE)
+  
+  // Storage & Limits (For SuperAdmin billing)
+  storageUsed Int         @default(0) // in MB
+  
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  // Relationships (The Tenant Anchor)
+  users         User[]
+  batches       Batch[]
+  transactions  FeeTransaction[]
+  doubts        PeerDoubt[]
+  systemLogs    SystemLog[]
+  attendances   Attendance[]
+
+  @@index([domain])
+}
+
+// ------------------------------------------
+// 3. CORE USER IDENTITY & RBAC
+// ------------------------------------------
+
+model User {
+  id           String    @id @default(uuid()) // Maps to Supabase auth.users.id
+  instituteId  String
+  institute    Institute @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  
+  role         Role
+  name         String
+  email        String    @unique
+  phone        String?
+  
+  // Soft Deletes (Never hard delete financial entities)
+  isActive     Boolean   @default(true)
+  deletedAt    DateTime? 
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Role-Specific Profiles (1-to-1)
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+
+  // Shared Relations
+  leaveRequests  LeaveRequest[]
+  doubtPosts     PeerDoubt[]    @relation("DoubtAuthor")
+  doubtReplies   DoubtResponse[]
+  aiChats        AiChatSession[]
+
+  @@index([instituteId, email])
+  @@index([instituteId, role])
+}
+
+model StudentProfile {
+  id             String  @id @default(uuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  rollNumber     String
+  guardianName   String?
+  guardianPhone  String?
+  
+  // Gamification & Stats
+  xp             Int     @default(0)
+  streak         Int     @default(0)
+
+  // Relationships
+  batches        StudentBatch[]
+  attendances    Attendance[]
+  examScores     ExamScore[]
+  feeTransactions FeeTransaction[]
+}
+
+model TeacherProfile {
+  id             String  @id @default(uuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  department     String
+  qualifications String
+  experience     Int     // In years
+  baseSalary     Float
+  
+  // Stats
+  rating         Float   @default(0.0)
+  reviewCount    Int     @default(0)
+
+  // Relationships
+  batches        TeacherBatch[]
+  payrolls       Payroll[]
+}
+
+// ------------------------------------------
+// 4. ACADEMICS & ATTENDANCE
+// ------------------------------------------
+
+model Batch {
+  id          String    @id @default(uuid())
+  instituteId String
+  institute   Institute @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  
+  name        String    // e.g., "Batch A (10th)"
+  stream      String?   // e.g., "Science", "JEE"
+
+  students    StudentBatch[]
+  teachers    TeacherBatch[]
+  attendances Attendance[]
+  exams       Exam[]
+  doubts      PeerDoubt[]
+  broadcasts  Broadcast[]
+
+  @@index([instituteId])
+}
+
+// Junction table: Students can be in multiple batches (e.g., 10th Math, 10th Physics Crash Course)
+model StudentBatch {
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batchId   String
+  batch     Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, batchId])
+}
+
+// Junction table: Teachers assigned to batches
+model TeacherBatch {
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  batchId   String
+  batch     Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  subject   String         // e.g., "Physics" for this specific batch
+
+  @@id([teacherId, batchId])
+}
+
+model Attendance {
+  id          String           @id @default(uuid())
+  instituteId String
+  institute   Institute        @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  
+  studentId   String
+  student     StudentProfile   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batchId     String
+  batch       Batch            @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  
+  date        DateTime         @db.Date
+  status      AttendanceStatus
+  
+  recordedBy  String           // Teacher ID who marked it
+
+  @@unique([studentId, batchId, date]) // Prevent duplicate attendance for same class/day
+  @@index([instituteId, date])
+}
+
+model LeaveRequest {
+  id          String      @id @default(uuid())
+  userId      String      // Can be Student or Teacher
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type        String      // "Sick Leave", "Exam Prep"
+  startDate   DateTime    @db.Date
+  endDate     DateTime    @db.Date
+  reason      String      @db.Text
+  status      LeaveStatus @default(PENDING)
+  
+  createdAt   DateTime    @default(now())
+}
+
+// ------------------------------------------
+// 5. EXAMS & ANALYTICS (The Radar Chart)
+// ------------------------------------------
+
+model Exam {
+  id          String    @id @default(uuid())
+  batchId     String
+  batch       Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  
+  name        String    // "Unit Test 1"
+  date        DateTime  @db.Date
+  
+  scores      ExamScore[]
+}
+
+model ExamScore {
+  id          String         @id @default(uuid())
+  examId      String
+  exam        Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  subject     String
+  marksObtained Float
+  maxMarks    Float
+
+  @@unique([examId, studentId, subject])
+}
+
+// ------------------------------------------
+// 6. FINANCIAL LEDGER (Fees & Payroll)
+// ------------------------------------------
+
+model FeeTransaction {
+  id          String        @id @default(uuid())
+  instituteId String
+  institute   Institute     @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  amount      Float
+  dueReason   String        // e.g., "Jan Installment", "Crash Course"
+  dueDate     DateTime?     @db.Date
+  
+  status      PaymentStatus @default(PENDING)
+  method      PaymentMethod?
+  paidAt      DateTime?
+  
+  receiptNo   String?       @unique
+
+  @@index([instituteId, status])
+}
+
+model Payroll {
+  id          String         @id @default(uuid())
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  amount      Float
+  month       Int
+  year        Int
+  status      PaymentStatus  @default(PENDING)
+  paidAt      DateTime?
+
+  @@unique([teacherId, month, year])
+}
+
+// ------------------------------------------
+// 7. HIVE MIND (Peer Doubts)
+// ------------------------------------------
+
+model PeerDoubt {
+  id          String      @id @default(uuid())
+  instituteId String
+  institute   Institute   @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  
+  authorId    String
+  author      User        @relation("DoubtAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  batchId     String
+  batch       Batch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  
+  query       String      @db.Text
+  status      DoubtStatus @default(PEER_REVIEW)
+  upvotes     Int         @default(0)
+  
+  createdAt   DateTime    @default(now())
+
+  responses   DoubtResponse[]
+
+  @@index([instituteId, status])
+}
+
+model DoubtResponse {
+  id          String    @id @default(uuid())
+  doubtId     String
+  doubt       PeerDoubt @relation(fields: [doubtId], references: [id], onDelete: Cascade)
+  
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  content     String    @db.Text
+  isAccepted  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+// ------------------------------------------
+// 8. COMMUNICATIONS & LOGS
+// ------------------------------------------
+
+model Broadcast {
+  id          String    @id @default(uuid())
+  batchId     String
+  batch       Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  
+  message     String    @db.Text
+  isUrgent    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+model SystemLog {
+  id          String    @id @default(uuid())
+  instituteId String
+  institute   Institute @relation(fields: [instituteId], references: [id], onDelete: Cascade)
+  
+  type        String    // "success", "warning", "error"
+  message     String
+  createdAt   DateTime  @default(now())
+
+  @@index([instituteId, createdAt(sort: Desc)])
+}
+
+// ------------------------------------------
+// 9. AI KNOWLEDGE BASE (Chat Sessions)
+// ------------------------------------------
+
+model AiChatSession {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subject     String?   // Optional context
+  title       String    // Auto-generated summary of chat
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  messages    AiChatMessage[]
+}
+
+model AiChatMessage {
+  id          String        @id @default(uuid())
+  sessionId   String
+  session     AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  role        String        // "user" or "ai"
+  content     String        @db.Text
+  hasImage    Boolean       @default(false)
+  
+  createdAt   DateTime      @default(now())
+}

@@ -1,51 +1,55 @@
 "use server";
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// Initialize the Google Generative AI with your secret key
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
 /**
- * Server Action: Nexa AI (Powered by NexGen Operating Systems Pvt Ltd)
- * Uses Pollinations.ai for text generation.
- * Handles Persona Switching (Student vs Teacher).
+ * Server Action: Nexa AI (Engineered via Google Vertex)
+ * Powered by NexGen Operating Systems Pvt Ltd.
+ * Handles Persona Switching & Multi-modal Vision.
  */
 export async function askAi(prompt: string, imageBase64?: string, userRole: 'student' | 'teacher' = 'student') {
     try {
-        // 1. ADVANCED VISION HANDLING (Simulated for Demo)
+        // 1. CHOOSE THE MODEL (Flash is best for speed and cost-efficiency)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        // 2. DEFINE SYSTEM PERSONAS
+        const teacherPersona = "You are Nexa, a Professional Faculty Colleague by NexGen OS. Tone: Formal, academic, efficient. Help with lesson plans, grading rubrics, and pedagogy. Use clear headers and Markdown.";
+        const studentPersona = "You are Nexa, a friendly Student Tutor by NexGen OS. Tone: Energetic, concise, helpful. Use emojis 🚀. Explain concepts step-by-step. Encourage peer learning.";
+
+        const systemInstruction = userRole === 'teacher' ? teacherPersona : studentPersona;
+
+        // 3. HANDLE MULTI-MODAL (VISION) VS TEXT-ONLY
+        let result;
+
         if (imageBase64) {
-            await new Promise(resolve => setTimeout(resolve, 2500)); // Processing delay for realism
+            // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+            const base64Data = imageBase64.split(",")[1];
 
-            const branding = "\n\n*Powered by NexGen Operating Systems Pvt Ltd*";
-
-            if (userRole === 'student') {
-                return `**[NexGen Vision Analysis]** 👁️\n\nI've scanned your image! It looks like a **Physics/Math problem**.\n\nSince I'm in **Secure Demo Mode**, I can't extract the exact numbers just yet (OCR is locked). \n\n**Quick Fix:**\nType the question text below, and I'll solve it step-by-step instantly! 🚀${branding}`;
-            } else {
-                return `**[NexGen Faculty OCR]** 📠\n\nImage processed. Detected: **Handwritten Student Response / Diagram**.\n\n**Analysis:**\nThe structure appears correct, but I need the raw text to perform a precise grade check or plagiarism scan.\n\nPlease transcribe the key values, and I will generate a grading rubric immediately.${branding}`;
-            }
-        }
-
-        // 2. PERSONA DEFINITION
-        let systemPersona = "";
-
-        if (userRole === 'teacher') {
-            systemPersona = "System: You are Nexa, a Professional Faculty Colleague trained by NexGen Operating Systems Pvt Ltd. Your tone is formal, academic, and efficient. You assist with lesson planning, pedagogy, and complex analytics. Never use slang. Structure your answers with clear headers.";
+            result = await model.generateContent([
+                { text: `${systemInstruction}\n\nUser Question: ${prompt}` },
+                {
+                    inlineData: {
+                        data: base64Data,
+                        mimeType: "image/jpeg" // You can adjust this based on the actual image type
+                    }
+                }
+            ]);
         } else {
-            systemPersona = "System: You are Nexa, a Quick Doubt Solver Assistant by NexGen Operating Systems Pvt Ltd. Your tone is friendly, energetic, and concise. You help students understand concepts fast. Use emojis 🚀. If asked a math question, solve it step-by-step clearly.";
+            // Text-only generation
+            result = await model.generateContent(`${systemInstruction}\n\nUser Question: ${prompt}`);
         }
 
-        const cleanPrompt = prompt.replace(/\n/g, " ");
+        const response = await result.response;
+        const text = response.text();
 
-        // 3. FETCH FROM AI PROVIDER
-        const response = await fetch(`https://text.pollinations.ai/${encodeURIComponent(systemPersona + " " + cleanPrompt)}`, {
-            method: "GET",
-            cache: "no-store",
-        });
-
-        if (!response.ok) {
-            throw new Error(`AI Provider Error: ${response.status}`);
-        }
-
-        const text = await response.text();
-        return text + "\n\n_Powered by NexGen OS_";
+        // 4. BRANDED FOOTER
+        return text + "\n\n_Nexa AI Core • Engineered via Google Vertex_";
 
     } catch (error) {
-        console.error("AI Action Error:", error);
-        return "⚠️ **Neural Link Unstable.**\n\nUnable to reach NexGen Servers. Please check your internet connection and try again.";
+        console.error("Nexa AI Core Error:", error);
+        return "⚠️ **Neural Link Unstable.**\n\nNexa AI is currently undergoing maintenance. Please verify your connection to NexGen Servers.";
     }
 }
